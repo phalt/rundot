@@ -193,3 +193,57 @@ def test_every_run_option_is_on_the_command_line_page():
     options = [option for param in cli.run_runbook.params for option in [*param.opts, *param.secondary_opts]]
 
     assert [option for option in options if option.startswith("--") and f"`{option}`" not in page] == []
+
+
+def nav_pages() -> list[str]:
+    """Every page the site's navigation lists, as its path under docs/."""
+    return re.findall(r"^\s+- .*: (\S+\.md)$", (ROOT / "mkdocs.yml").read_text(), re.MULTILINE)
+
+
+def test_every_page_in_the_nav_exists():
+    """So the nav can't point at a page that was moved or never written."""
+    assert nav_pages()
+    assert [page for page in nav_pages() if not (DOCS / page).is_file()] == []
+
+
+def test_the_browser_page_is_in_the_docs_nav_next_to_the_command_line():
+    """The rundot web page is listed under Documentation, straight after Command line."""
+    nav = (ROOT / "mkdocs.yml").read_text()
+
+    assert "    - 📟 Command line: cli.md\n    - 🌐 Run it in your browser: web.md\n" in nav
+
+
+def images(path: Path) -> list[str]:
+    """The target of every markdown image in a file, as written."""
+    return re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", path.read_text())
+
+
+@pytest.mark.parametrize("page", [ROOT / "README.md", *sorted(DOCS.glob("*.md"))], ids=lambda page: page.name)
+def test_every_image_a_page_shows_exists(page):
+    """A screenshot a page links to is in the repo, at the path the page uses."""
+    local = [image for image in images(page) if "://" not in image]
+
+    assert [image for image in local if not (page.parent / image).is_file()] == []
+
+
+def test_the_browser_page_shows_screenshots():
+    """docs/web.md shows the page, and the README and home page show the same screenshot of it."""
+    assert len(images(DOCS / "web.md")) >= 10
+    assert "docs/web.png" in images(ROOT / "README.md")
+    assert "web.png" in images(DOCS / "index.md")
+
+
+def test_every_screenshot_is_small():
+    """Each screenshot is cropped and small, so the repo and the docs stay quick to fetch."""
+    screenshots = [DOCS / "web.png", *(DOCS / "web").glob("*.png")]
+
+    assert [path.name for path in screenshots if path.stat().st_size > 150_000] == []
+
+
+def test_every_web_option_is_on_the_command_line_page():
+    """So a new rundot web flag can't go undocumented."""
+    page = (DOCS / "cli.md").read_text()
+    options = [option for param in cli.web.params for option in [*param.opts, *param.secondary_opts]]
+
+    assert "## rundot web" in page
+    assert [option for option in options if option.startswith("--") and f"`{option}`" not in page] == []
