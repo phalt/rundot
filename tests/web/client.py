@@ -11,7 +11,10 @@ TIMEOUT = 10
 
 
 class Client:
-    """Requests to a rundot web server, with the cookie its URL's token sets, from the server's own origin."""
+    """Requests to a rundot web server, with the cookie its URL's token sets, from the server's own origin, as one
+    tab, named as the page names itself."""
+
+    tab = "tab-1"
 
     def __init__(self, url: str) -> None:
         """url is the one rundot web prints, with its token."""
@@ -46,13 +49,13 @@ class Client:
         connection.request(method, path, body=body, headers=headers)
         return connection.getresponse()
 
-    def post(self, path: str, value: Any) -> int:
-        response, body = self.request("POST", path, json.dumps(value))
+    def post(self, path: str, value: dict[str, Any]) -> int:
+        response, body = self.request("POST", path, json.dumps({**value, "tab": self.tab}))
         assert response.status in (204, 409), (response.status, body)
         return response.status
 
     def events(self, book: str) -> "Events":
-        response = self.open("GET", f"/book/{book}/events")
+        response = self.open("GET", f"/book/{book}/events?tab={self.tab}")
         assert response.status == 200, response.status
         return Events(response)
 

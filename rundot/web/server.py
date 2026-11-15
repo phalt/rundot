@@ -153,7 +153,7 @@ class _Handler(BaseHTTPRequestHandler):
             case "GET", ["book", name]:
                 return self._html(page.book(self._book(name)))
             case "GET", ["book", name, "events"]:
-                return self._events(self._book(name))
+                return self._events(self._book(name), dict(query).get("tab") or None)
             case "GET", ["book", name, "file", *rest] if rest:
                 return self._file(self._book(name).path.parent, rest)
             case "POST", ["book", name, "answer"]:
@@ -203,10 +203,11 @@ class _Handler(BaseHTTPRequestHandler):
         kind, _ = mimetypes.guess_type(resolved.name)
         self._send(HTTPStatus.OK, content, kind or "application/octet-stream")
 
-    def _events(self, book: Book) -> None:
-        """Stream the book's events as SSE: its run so far, then each as it happens, until the server stops."""
+    def _events(self, book: Book, tab: str | None) -> None:
+        """Stream the book's events as SSE to the tab named tab, or a tab with no name: its run so far, then each
+        as it happens, until the server stops."""
         web = self.server.web
-        events = web.hub.subscribe(book.path, web.resume_info(book.path))
+        events = web.hub.subscribe(book.path, web.resume_info(book.path), tab)
         try:
             self.send_response(HTTPStatus.OK)
             self._common_headers()
@@ -234,25 +235,26 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _answer(self, book: Book) -> None:
         body = self._json()
-        kind, value = body.get("kind"), body.get("value")
-        if not isinstance(kind, str) or not isinstance(value, str):
-            raise _Refused(HTTPStatus.BAD_REQUEST, 'an answer is {"kind": "...", "value": "..."}')
+        kind, value, tab = body.get("kind"), body.get("value"), _tab(body)
+        if not isinstance(kind, str) or not isinstance(value, str) or tab is None:
+            raise _Refused(HTTPStatus.BAD_REQUEST, 'an answer is {"kind": "...", "value": "...", "tab": "..."}')
         hub = self.server.web.hub
         if hub.running != book.path:
             raise _Refused(HTTPStatus.CONFLICT, f"{book.name} isn't running")
         try:
-            hub.answer(kind, value)
+            hub.answer(kind, value, tab=tab)
         except WrongAnswer as e:
             raise _Refused(HTTPStatus.CONFLICT, str(e)) from None
         self._send(HTTPStatus.NO_CONTENT)
 
     def _run(self, book: Book) -> None:
-        resume = self._json().get("resume")
-        if not isinstance(resume, bool):
-            raise _Refused(HTTPStatus.BAD_REQUEST, 'a run is {"resume": true} or {"resume": false}')
+        body = self._json()
+        resume, tab = body.get("resume"), _tab(body)
+        if not isinstance(resume, bool) or tab is None:
+            raise _Refused(HTTPStatus.BAD_REQUEST, 'a run is {"resume": true or false, "tab": "..."}')
         web = self.server.web
         try:
-            web.hub.start(book.path, web.start_run(book.path), resume)
+            web.hub.start(book.path, web.start_run(book.path), resume, tab=tab)
         except Busy as busy:
             body = json.dumps({"busy": busy.path.stem}).encode()
             return self._send(HTTPStatus.CONFLICT, body, "application/json")
@@ -301,3 +303,9 @@ class _Handler(BaseHTTPRequestHandler):
     def _common_headers(self) -> None:
         # On every response, not only HTML: a runbook's directory may hold an .html file, served as one.
         self.send_header("Content-Security-Policy", CSP)
+
+
+def _tab(body: dict[str, Any]) -> str | None:
+    """The tab a POST says it's from: the id the page keeps across reloads, or None if it doesn't say."""
+    tab = body.get("tab")
+    return tab if isinstance(tab, str) and tab else None

@@ -26,6 +26,8 @@ from rundot.web.server import WebServer
 
 # Long enough for bash to start on a slow CI machine; only reached when something is wrong.
 TIMEOUT = 10
+# The tab that starts each run, as the page names itself.
+TAB = "tab-1"
 
 HELLO = """\
     ---
@@ -112,8 +114,9 @@ class Running:
         connection.request(method, path, body=body, headers=sent)
         return connection.getresponse()
 
-    def post(self, path: str, value: Any) -> tuple[http.client.HTTPResponse, bytes]:
-        return self.request("POST", path, json.dumps(value))
+    def post(self, path: str, value: dict[str, Any], tab: str = TAB) -> tuple[http.client.HTTPResponse, bytes]:
+        """POST value as JSON, from the tab named tab, as the page sends it."""
+        return self.request("POST", path, json.dumps({**value, "tab": tab}))
 
 
 @pytest.fixture
@@ -316,7 +319,10 @@ def test_a_post_from_a_foreign_origin_is_refused(serve, origin):
     running = serve()
 
     response, _ = running.request(
-        "POST", "/book/hello/run", json.dumps({"resume": False}), origin=origin.format(port=running.web.port)
+        "POST",
+        "/book/hello/run",
+        json.dumps({"resume": False, "tab": TAB}),
+        origin=origin.format(port=running.web.port),
     )
 
     assert response.status == 403
@@ -326,7 +332,7 @@ def test_a_post_from_a_foreign_origin_is_refused(serve, origin):
 def test_a_post_with_no_origin_is_refused(serve):
     running = serve()
 
-    response, _ = running.request("POST", "/book/hello/run", json.dumps({"resume": False}), origin=None)
+    response, _ = running.request("POST", "/book/hello/run", json.dumps({"resume": False, "tab": TAB}), origin=None)
 
     assert response.status == 403
     assert running.started == []
@@ -336,7 +342,10 @@ def test_a_post_from_localhost_is_allowed(serve):
     running = serve()
 
     response, _ = running.request(
-        "POST", "/book/hello/run", json.dumps({"resume": False}), origin=f"http://localhost:{running.web.port}"
+        "POST",
+        "/book/hello/run",
+        json.dumps({"resume": False, "tab": TAB}),
+        origin=f"http://localhost:{running.web.port}",
     )
 
     assert response.status == 204
@@ -617,9 +626,9 @@ def test_events_replay_the_run_so_far_then_stream_it_live(serve, library):
     running = serve()
     assert running.post("/book/hello/run", {"resume": False})[0].status == 204
     path = library / "hello.md"
-    from_the_hub = running.hub.subscribe(path)
+    from_the_hub = running.hub.subscribe(path, tab=TAB)
 
-    stream = running.open("GET", "/book/hello/events")
+    stream = running.open("GET", f"/book/hello/events?tab={TAB}")
     assert stream.getheader("Content-Type") == "text/event-stream"
     assert stream.getheader("Cache-Control") == "no-store"
     events = sse(stream)
@@ -643,9 +652,9 @@ def test_each_event_is_one_data_line_of_the_hubs_json_exactly(serve, library):
     """No event: or id: fields, and no reformatting: the page reads the same objects as --json."""
     running = serve()
     running.post("/book/hello/run", {"resume": False})
-    expected = running.hub.subscribe(library / "hello.md").get(timeout=TIMEOUT)
+    expected = running.hub.subscribe(library / "hello.md", tab=TAB).get(timeout=TIMEOUT)
 
-    stream = running.open("GET", "/book/hello/events")
+    stream = running.open("GET", f"/book/hello/events?tab={TAB}")
 
     assert stream.readline() == f"data: {json.dumps(expected, ensure_ascii=False)}\n".encode()
     assert stream.readline() == b"\n"
@@ -654,7 +663,7 @@ def test_each_event_is_one_data_line_of_the_hubs_json_exactly(serve, library):
 def test_events_end_when_the_hub_stops(serve):
     running = serve()
     running.post("/book/hello/run", {"resume": False})
-    events = sse(running.open("GET", "/book/hello/events"))
+    events = sse(running.open("GET", f"/book/hello/events?tab={TAB}"))
     until(events, "prompt")
 
     running.hub.stop(timeout=TIMEOUT)
@@ -667,7 +676,7 @@ def test_events_end_cleanly_when_the_server_stops(serve):
     """Even with the run still waiting, so nothing comes on the queue: the handler notices the server stopping."""
     running = serve()
     running.post("/book/hello/run", {"resume": False})
-    events = sse(running.open("GET", "/book/hello/events"))
+    events = sse(running.open("GET", f"/book/hello/events?tab={TAB}"))
     until(events, "prompt")
 
     closing = threading.Thread(target=running.web.close)
@@ -682,11 +691,28 @@ def test_another_books_tab_is_told_which_book_is_busy(serve):
     running = serve()
     running.post("/book/hello/run", {"resume": False})
 
-    events = sse(running.open("GET", "/book/other/events"))
+    events = sse(running.open("GET", f"/book/other/events?tab={TAB}"))
 
     assert next(events)["event"] == "busy"
     running.hub.stop(timeout=TIMEOUT)
     assert [event["book"] for event in events] == [None]
+
+
+@pytest.mark.parametrize("query", ["?tab=tab-2", "", "?tab="])
+def test_another_tab_on_the_running_book_is_told_its_busy_then_replays_the_run(serve, query):
+    """A second tab, or one that doesn't say which it is, sees the run with the busy banner, until it ends."""
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    owner = sse(running.open("GET", f"/book/hello/events?tab={TAB}"))
+    replayed = until(owner, "prompt")
+
+    events = sse(running.open("GET", f"/book/hello/events{query}"))
+
+    busy, *rest = until(events, "prompt")
+    assert (busy["event"], busy["book"]) == ("busy", "hello")
+    assert rest == replayed
+    running.hub.stop(timeout=TIMEOUT)
+    assert [event["event"] for event in events][-2:] == ["run_finished", "busy"]
 
 
 def test_a_book_with_a_run_to_resume_gets_the_resume_banner(serve, library):
@@ -697,9 +723,9 @@ def test_a_book_with_a_run_to_resume_gets_the_resume_banner(serve, library):
         return "Stopped at step 1, Greet" if path.name == "hello.md" else None
 
     running = serve(resume_info=resume_info)
-    hello = running.open("GET", "/book/hello/events")
+    hello = running.open("GET", f"/book/hello/events?tab={TAB}")
     first = next(sse(hello))
-    other = sse(running.open("GET", "/book/other/events"))
+    other = sse(running.open("GET", f"/book/other/events?tab={TAB}"))
     running.hub.stop(timeout=TIMEOUT)
 
     assert first["event"] == "resume"
@@ -718,7 +744,7 @@ def test_a_run_that_cant_start_shows_its_error(serve):
     running = serve(start_run=start_run)
     running.post("/book/hello/run", {"resume": False})
 
-    seen = until(sse(running.open("GET", "/book/hello/events")), "run_finished")
+    seen = until(sse(running.open("GET", f"/book/hello/events?tab={TAB}")), "run_finished")
 
     assert [event["event"] for event in seen] == ["error", "run_finished"]
     assert seen[0]["message"] == "line 9: no backend runs 'ruby' blocks"
@@ -727,7 +753,7 @@ def test_a_run_that_cant_start_shows_its_error(serve):
 
 def test_an_idle_stream_sends_a_heartbeat(serve, monkeypatch):
     monkeypatch.setattr(server_module, "HEARTBEAT", 0.0)
-    stream = serve().open("GET", "/book/hello/events")
+    stream = serve().open("GET", f"/book/hello/events?tab={TAB}")
 
     assert stream.readline() == b":\n"
     assert stream.readline() == b"\n"
@@ -745,7 +771,7 @@ def test_a_closed_tab_lets_go_of_its_queue(serve, monkeypatch):
         let_go.set()
 
     monkeypatch.setattr(running.hub, "unsubscribe", spy)
-    stream = running.open("GET", "/book/hello/events")
+    stream = running.open("GET", f"/book/hello/events?tab={TAB}")
     assert stream.readline() == b":\n"
 
     stream.close()
@@ -759,7 +785,7 @@ def test_a_closed_tab_lets_go_of_its_queue(serve, monkeypatch):
 def test_an_answer_goes_to_the_prompt_the_run_is_waiting_on(serve):
     running = serve()
     running.post("/book/other/run", {"resume": False})
-    events = sse(running.open("GET", "/book/other/events"))
+    events = sse(running.open("GET", f"/book/other/events?tab={TAB}"))
     until(events, "prompt")
 
     response, body = running.post("/book/other/answer", {"kind": "start", "value": "y"})
@@ -772,7 +798,7 @@ def test_an_answer_goes_to_the_prompt_the_run_is_waiting_on(serve):
 def test_an_answer_of_the_wrong_kind_is_409(serve):
     running = serve()
     running.post("/book/hello/run", {"resume": False})
-    until(sse(running.open("GET", "/book/hello/events")), "prompt")
+    until(sse(running.open("GET", f"/book/hello/events?tab={TAB}")), "prompt")
 
     response, body = running.post("/book/hello/answer", {"kind": "block", "value": "y"})
 
@@ -791,12 +817,27 @@ def test_an_answer_for_a_book_that_isnt_the_one_running_is_409(serve):
     """Another book's tab can't answer the running book's prompt."""
     running = serve()
     running.post("/book/hello/run", {"resume": False})
-    until(sse(running.open("GET", "/book/hello/events")), "prompt")
+    until(sse(running.open("GET", f"/book/hello/events?tab={TAB}")), "prompt")
 
     response, body = running.post("/book/other/answer", {"kind": "start", "value": "y"})
 
     assert response.status == 409
     assert body == b"other isn't running"
+
+
+def test_an_answer_from_a_tab_that_didnt_start_the_run_is_409_and_the_prompt_keeps_waiting(serve):
+    """A second tab of the running book can't click: the server refuses it, not only the page."""
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    events = sse(running.open("GET", f"/book/hello/events?tab={TAB}"))
+    until(events, "prompt")
+
+    response, body = running.post("/book/hello/answer", {"kind": "start", "value": "y"}, tab="tab-2")
+
+    assert response.status == 409
+    assert body == b"only the tab that started the run can answer it"
+    assert running.post("/book/hello/answer", {"kind": "start", "value": "y"})[0].status == 204
+    assert until(events, "prompt")[-1]["kind"] == "block"
 
 
 @pytest.mark.parametrize(
@@ -810,10 +851,13 @@ def test_an_answer_for_a_book_that_isnt_the_one_running_is_409(serve):
         '{"value": "y"}',
         '{"kind": 1, "value": "y"}',
         '{"kind": "start", "value": true}',
+        '{"kind": "start", "value": "y"}',
+        '{"kind": "start", "value": "y", "tab": 1}',
+        '{"kind": "start", "value": "y", "tab": ""}',
         b"\xff",
     ],
 )
-def test_an_answer_that_isnt_a_kind_and_a_value_is_400(serve, body):
+def test_an_answer_that_isnt_a_kind_a_value_and_a_tab_is_400(serve, body):
     running = serve()
     running.post("/book/hello/run", {"resume": False})
 
@@ -832,6 +876,17 @@ def test_a_bad_content_length_is_400(serve, length):
 # Runs
 
 
+@pytest.mark.parametrize("body", ['{"resume": false}', '{"resume": false, "tab": 1}', '{"resume": false, "tab": ""}'])
+def test_a_run_from_no_tab_is_400(serve, body):
+    """The tab that starts a run is the one that can answer it, so it must say which it is."""
+    running = serve()
+
+    response, _ = running.request("POST", "/book/hello/run", body)
+
+    assert response.status == 400
+    assert running.hub.running is None
+
+
 @pytest.mark.parametrize("resume", [False, True])
 def test_run_starts_the_book_through_start_run(serve, library, resume):
     """Start and Start over send resume false, and Resume and Retry step send true."""
@@ -842,7 +897,7 @@ def test_run_starts_the_book_through_start_run(serve, library, resume):
     assert response.status == 204
     assert body == b""
     assert running.hub.running == library / "hello.md"
-    until(sse(running.open("GET", "/book/hello/events")), "prompt")
+    until(sse(running.open("GET", f"/book/hello/events?tab={TAB}")), "prompt")
     assert running.started == [(library / "hello.md", resume)]
 
 
@@ -850,8 +905,8 @@ def test_run_while_another_run_is_going_is_409_naming_the_busy_book(serve, libra
     running = serve()
     running.post("/book/hello/run", {"resume": False})
 
-    for book in ("other", "hello"):
-        response, body = running.post(f"/book/{book}/run", {"resume": False})
+    for book, tab in (("other", TAB), ("hello", TAB), ("hello", "tab-2")):
+        response, body = running.post(f"/book/{book}/run", {"resume": False}, tab=tab)
         assert response.status == 409
         assert response.getheader("Content-Type") == "application/json"
         assert json.loads(body) == {"busy": "hello"}
@@ -861,7 +916,7 @@ def test_run_while_another_run_is_going_is_409_naming_the_busy_book(serve, libra
 def test_a_book_can_run_again_once_its_run_has_finished(serve, library):
     running = serve()
     running.post("/book/hello/run", {"resume": False})
-    events = sse(running.open("GET", "/book/hello/events"))
+    events = sse(running.open("GET", f"/book/hello/events?tab={TAB}"))
     until(events, "prompt")
     running.post("/book/hello/answer", {"kind": "start", "value": "n"})
     until(events, "run_finished")
