@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from rundot import runner
-from rundot.inputs import Input, Prompter
+from rundot.inputs import Input, InputError, Prompter
 from rundot.jsonlines import to_json
 from rundot.runbook import Step
 
@@ -18,6 +18,8 @@ Sink = Callable[[runner.Event], None]
 StartRun = Callable[[Prompter, Sink, bool], object]
 # Each subscriber's queue gets events as JSON objects, then None once the hub stops.
 Events = queue.Queue[dict[str, Any] | None]
+# Errors that stop a run before it starts, which the terminal prints and exits 1 for. Anything else is a bug.
+_EXPECTED = (runner.RunnerError, InputError)
 
 
 class Busy(Exception):
@@ -95,17 +97,20 @@ class WebPrompter:
 class RunHub:
     """Owns at most one run, on a daemon worker thread, and every event it has sent so far.
 
-    Events are jsonlines.to_json objects, so the page reads the same schema as --json.
+    Events are jsonlines.to_json objects, so the page reads the same schema as --json, plus a few only the hub
+    sends: prompt, busy (another book is running, or book is None once it stops), resume, and error.
+    Each subscriber is a tab on one book, and gets only that book's run.
     """
 
     def __init__(self, clock: Callable[[], datetime] = lambda: datetime.now().astimezone()) -> None:
         self._clock = clock
         self._lock = threading.Lock()
         self._buffer: list[dict[str, Any]] = []
-        self._subscribers: list[Events] = []
+        self._subscribers: list[tuple[Path, Events]] = []
         self._steps: tuple[Step, ...] = ()
         self._thread: threading.Thread | None = None
-        self._path: Path | None = None
+        self._active = False  # whether the run is going; cleared when it ends, before its thread does
+        self._path: Path | None = None  # the book of the run that's going, or of the last one
         self._prompter: WebPrompter | None = None
 
     @property
@@ -126,19 +131,36 @@ class RunHub:
             self._buffer = []
             self._path = path
             self._prompter = prompter
+            self._active = True
+            self._tell_others(path.stem)
             self._thread = threading.Thread(
                 target=self._work, args=(start_run, prompter, resume), name=f"rundot run {path.name}", daemon=True
             )
             self._thread.start()
 
-    def subscribe(self) -> Events:
-        """A queue that gets every event of the run so far, then each new one as it happens."""
+    def subscribe(self, path: Path, resume: str | None = None) -> Events:
+        """A queue for a tab on the book at path.
+
+        If path's run is going, or was the last, it gets every event of that run so far, then each new one as it
+        happens. If another book is running, it gets busy naming it. Otherwise it gets resume with the message
+        given, if there is one.
+        """
         events: Events = queue.Queue()
         with self._lock:
-            for event in self._buffer:
-                events.put(event)
-            self._subscribers.append(events)
+            if path == self._path:
+                for event in self._buffer:
+                    events.put(event)
+            elif (running := self._running()) is not None:
+                events.put(self._hub_json("busy", {"book": running.stem}))
+            elif resume is not None:
+                events.put(self._hub_json("resume", {"message": resume}))
+            self._subscribers.append((path, events))
         return events
+
+    def unsubscribe(self, events: Events) -> None:
+        """Let go of a queue subscribe gave, once its tab has gone. Letting go of one twice does nothing."""
+        with self._lock:
+            self._subscribers = [(path, each) for path, each in self._subscribers if each is not events]
 
     def answer(self, kind: str, value: str) -> None:
         """Answer the prompt the run is waiting on. Raises WrongAnswer if it isn't waiting on one of this kind."""
@@ -166,7 +188,7 @@ class RunHub:
             prompter.stop()
         self.wait(timeout)
         with self._lock:
-            for events in self._subscribers:
+            for _, events in self._subscribers:
                 events.put(None)
             self._subscribers = []
 
@@ -177,10 +199,28 @@ class RunHub:
             # The runner finishes a run as interrupted once its overview is sent. Before that, while it asks for
             # the frontmatter inputs, Ctrl-C escapes it, so the run is finished here.
             self._sink(runner.RunFinished("interrupted", 0.0))
+        except Exception as e:
+            # The page shows why, and the run still ends with one run_finished. A bug's traceback goes on to the
+            # terminal through threading.excepthook.
+            self._hub_event("error", {"message": str(e)})
+            self._sink(runner.RunFinished("failed", 0.0))
+            if not isinstance(e, _EXPECTED):
+                raise
+        finally:
+            with self._lock:
+                self._active = False
+                self._tell_others(None)
 
     def _running(self) -> Path | None:
         """running, for a caller that holds the lock."""
-        return self._path if self._thread is not None and self._thread.is_alive() else None
+        return self._path if self._active else None
+
+    def _tell_others(self, book: str | None) -> None:
+        """Send busy to every tab on a book other than the run's, for a caller that holds the lock."""
+        event = self._hub_json("busy", {"book": book})
+        for path, events in self._subscribers:
+            if path != self._path:
+                events.put(event)
 
     def _sink(self, event: runner.Event) -> None:
         if isinstance(event, runner.Overview):
@@ -188,12 +228,17 @@ class RunHub:
         self._publish(to_json(event, self._steps, self._clock()))
 
     def _hub_event(self, name: str, fields: dict[str, Any]) -> None:
-        """Publish an event only the hub sends, such as prompt, shaped like to_json's."""
-        self._publish({"event": name, "at": self._clock().isoformat(timespec="milliseconds"), **fields})
+        """Publish an event of the run that only the hub sends, such as prompt."""
+        self._publish(self._hub_json(name, fields))
+
+    def _hub_json(self, name: str, fields: dict[str, Any]) -> dict[str, Any]:
+        """An event only the hub sends, shaped like to_json's."""
+        return {"event": name, "at": self._clock().isoformat(timespec="milliseconds"), **fields}
 
     def _publish(self, event: dict[str, Any]) -> None:
         # Under the lock, so a subscriber that joins now gets each event exactly once: replayed or live.
         with self._lock:
             self._buffer.append(event)
-            for events in self._subscribers:
-                events.put(event)
+            for path, events in self._subscribers:
+                if path == self._path:
+                    events.put(event)
