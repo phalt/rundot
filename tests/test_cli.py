@@ -33,6 +33,8 @@ from tests.output import finished, normalized, overview, printed, title
 
 RUNBOOKS = Path(__file__).parent / "runbooks"
 LIBRARY = Path(__file__).parent / "library"
+# The real clock, saved before conftest stops it for every test.
+REAL_NOW = cli._now
 
 
 @pytest.fixture
@@ -2054,6 +2056,16 @@ def test_inputs_still_lists_frontmatter_inputs_when_the_body_cannot_be_read(runn
 def test_a_blocks_time_is_local_to_the_millisecond():
     """A bracket shows the time its block started, to the millisecond, with leading zeros kept."""
     assert cli.block_time(datetime(2026, 11, 4, 9, 5, 7, 4999, tzinfo=timezone.utc)) == "09:05:07.004"
+
+
+def test_a_blocks_time_is_read_from_the_local_clock():
+    """The time a bracket shows is now, in the local time zone."""
+    before = datetime.now().astimezone()
+    now = REAL_NOW()
+    after = datetime.now().astimezone()
+
+    assert before <= now <= after
+    assert now.utcoffset() == before.utcoffset()
 
 
 # --- Resuming a run ---
