@@ -1749,12 +1749,16 @@ def test_ctrl_c_at_the_picker_runs_nothing(runner, monkeypatch, started_in):
     def ctrl_c(*args, **kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(click.termui, "visible_prompt_func", ctrl_c)
+    # CliRunner replaces click's prompt function with its own, so Ctrl-C is pressed at rundot's prompt instead.
+    # Click turning Ctrl-C into Abort and back is tested with the prompter.
+    monkeypatch.setattr(cli, "_prompt", ctrl_c)
 
     result = runner.invoke(cli.cli, ["run"])
 
     assert result.exit_code == 1
     assert "Traceback" not in result.output
+    # Running out of input also exits 1, but Click says Aborted! then.
+    assert "Aborted!" not in result.output
     assert sorted(path.name for path in started_in.iterdir()) == []
 
 
