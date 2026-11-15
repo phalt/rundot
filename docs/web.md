@@ -45,7 +45,7 @@ Only the next block's ▶ can be pressed. Blocks before it are done, and blocks 
 - What a block prints shows under it, as it's printed. Lines it writes to stderr are red.
 - The block ends with `✓ exit 0` or `✗ exit 1` and how long it took.
 - Each step heading shows `n/total`, then ✓ or ✗ once the step is done.
-- Placeholders such as `<NAME>` are filled in once the run starts. Secrets never are.
+- Placeholders such as `<NAME>` are filled in once the run starts, in every block, including those the run hasn't reached yet. A value an `input` block asks for fills in the blocks after it once it's given. Secrets never are.
 
 ### Confirms
 
