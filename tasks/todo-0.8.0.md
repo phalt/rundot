@@ -60,13 +60,13 @@ Every task is done test-first, in red-green slices, and also clears the standing
 **Description:** `rundot/web/hub.py`. `RunHub` owns at most one run. It has `start(path, start_run, resume)`, a replay buffer of JSON events, `subscribe()` returning a queue that's fed the buffer and then live events, `answer(kind, value)`, and `stop()`. `WebPrompter` implements `Prompter` by publishing a `prompt` event and blocking until `answer` gives a value.
 
 **Acceptance criteria:**
-- [ ] A second `start` while a run is going raises `Busy`, naming the running book
-- [ ] `ask` for an input publishes `{"event": "prompt", "kind": "input", "name": …, "problem": …}` and returns the answer
-- [ ] A refused value comes back as a second `prompt` with `problem` set, from `inputs.collect`
-- [ ] `confirm` for Start, ▶ and a confirm block are told apart by `kind`; an answer of the wrong kind raises `WrongAnswer`, and so does an answer when nothing is waiting
-- [ ] A subscriber that joins mid-run gets every earlier event first, in order
-- [ ] `stop()` while a prompt is waiting makes the run finish `interrupted`, and the thread ends
-- [ ] Secret values never appear in any published event
+- [x] A second `start` while a run is going raises `Busy`, naming the running book
+- [x] `ask` for an input publishes `{"event": "prompt", "kind": "input", "name": …, "problem": …}` and returns the answer
+- [x] A refused value comes back as a second `prompt` with `problem` set, from `inputs.collect`
+- [x] `confirm` for Start, ▶ and a confirm block are told apart by `kind`; an answer of the wrong kind raises `WrongAnswer`, and so does an answer when nothing is waiting
+- [x] A subscriber that joins mid-run gets every earlier event first, in order
+- [x] `stop()` while a prompt is waiting makes the run finish `interrupted`, and the thread ends
+- [x] Secret values never appear in any published event
 
 **Files likely touched:** `rundot/web/hub.py`, `tests/web/test_hub.py`
 
