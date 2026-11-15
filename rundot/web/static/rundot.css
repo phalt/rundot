@@ -178,6 +178,7 @@ summary { cursor: pointer; color: var(--fg-2); }
 .rd-block[data-kind="docstring"] pre { white-space: pre-wrap; color: var(--fg-2); font-family: var(--sans); font-size: 15px; }
 .rd-block[data-kind="confirm"] { border-color: rgba(245, 196, 81, .45); }
 .rd-block[data-kind="confirm"] pre { white-space: pre-wrap; color: var(--fg); font-family: var(--sans); font-size: 15px; }
+.rd-block[data-kind="docstring"] code, .rd-block[data-kind="confirm"] code { font: inherit; }
 .rd-block[data-kind="confirm"]::before { content: "do this by hand"; display: block; padding: 8px 16px 0; color: var(--amber); font: 500 12px var(--mono); }
 .rd-block[data-kind="confirm"] .rd-actions { padding: 0 16px 14px; }
 .rd-block[data-kind="input"] form { padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
