@@ -21,6 +21,8 @@ _ATTRIBUTES = {
     "td": {"align"},
     "details": {"open"},
 }
+# render_html's hooks for the page: <div class="rd-block" data-kind data-line data-lang>, and h2 data-step.
+_BLOCK_HOOK = frozenset({"class", "data-kind", "data-line", "data-lang"})
 # Attributes kept even with no value, like <details open>.
 _BOOLEAN = frozenset({"open"})
 # markdown-it marks a fence's language as <code class="language-x">.
@@ -98,14 +100,18 @@ def _keep(tag: str, attrs: list[tuple[str, str | None]]) -> dict[str, str | None
     given: dict[str, str | None] = {}
     for name, value in attrs:
         given.setdefault(name, value)
-    allowed = _ATTRIBUTES.get(tag, set())
+    allowed = set(_ATTRIBUTES.get(tag, ()))
+    if tag == "code" and _LANGUAGE.fullmatch(given.get("class") or ""):
+        allowed.add("class")
+    if tag == "div" and given.get("class") == "rd-block":
+        allowed |= _BLOCK_HOOK
+    if tag == "h2":
+        allowed.add("data-step")
     kept = {
         name: value
         for name, value in given.items()
         if name in allowed and (value is not None or name in _BOOLEAN) and (name not in _URLS or _safe_url(value or ""))
     }
-    if tag == "code" and _LANGUAGE.fullmatch(given.get("class") or ""):
-        kept["class"] = given["class"]
     if tag in ("th", "td") and "align" not in kept and (align := _TEXT_ALIGN.fullmatch(given.get("style") or "")):
         kept["align"] = align[1]
     return kept
