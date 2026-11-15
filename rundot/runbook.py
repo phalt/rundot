@@ -1,3 +1,4 @@
+import html
 import io
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -87,8 +88,12 @@ def parse(path: Path) -> Runbook:
 def render_html(text: str) -> str:
     """Render a runbook's body, everything after the frontmatter, as HTML."""
     file = io.BytesIO(text.encode("utf-8"))
-    _read_frontmatter(file)
-    return _MARKDOWN.render(file.read().decode("utf-8"))
+    _, _, offset = _read_frontmatter(file)
+    tokens = _MARKDOWN.parse(file.read().decode("utf-8"))
+    for index, token in enumerate(tokens):
+        if token.type == "fence" and (block := _block(token, offset)):
+            tokens[index] = Token("html_block", "", 0, content=_block_html(block))
+    return _MARKDOWN.renderer.render(tokens, _MARKDOWN.options, {})
 
 
 def read_frontmatter(path: Path) -> Mapping[str, Any]:
@@ -208,6 +213,15 @@ def _block(token: Token, offset: int) -> Block | None:
         case [language, "run", *_]:
             return Block(kind="run", language=language, content=token.content, line=_line(token, offset))
     return None
+
+
+def _block_html(block: Block) -> str:
+    """The rd-block hook the page fills in around a block's code. Everything from the runbook is escaped."""
+    language = f' data-lang="{html.escape(block.language)}"' if block.language else ""
+    return (
+        f'<div class="rd-block" data-kind="{block.kind}" data-line="{block.line}"{language}>'
+        f"<pre><code>{html.escape(block.content, quote=False)}</code></pre></div>\n"
+    )
 
 
 def _block_yaml(content: str) -> Any:
