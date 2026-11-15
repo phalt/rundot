@@ -27,6 +27,7 @@
 - Fonts, styles, the script and Pele ship inside rundot, so the page works offline.
 - Security: it listens on `127.0.0.1` only, checks `Host` and `Origin`, needs the one-time token in the printed URL, and sends `Content-Security-Policy: default-src 'self'`. Secret values never reach the browser. See [Security](https://docs.rundot.dev/web/#security).
 - Ctrl-C stops `rundot web`, saves a running run as interrupted, and exits 130. `rundot run` still exits 1.
+- `--json`'s `overview` and `input_collected` events have a `blocks` field: each block's text by line, with plain inputs filled in. See [`--json`](https://docs.rundot.dev/cli/#-json).
 
 ## 0.7.0
 
