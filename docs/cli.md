@@ -307,6 +307,10 @@ Every object has `event` and `at`, when it happened, in ISO 8601 with millisecon
 
 `--json` can't be used with `--dry` or `--step`, or without a runbook. Those are usage errors, exit 2.
 
+### --web
+
+`rundot run RUNBOOK --web`, and `rundot RUNBOOK --web`, open the runbook in the browser, as `rundot web RUNBOOK` does. With no runbook, the browser opens on the library. `--web` can't be used with `--dry`, `--step`, `--no-step`, `--show-code`, `--no-input`, `--json`, `--resume` or `--restart`: the page asks, runs one block at a time, and resumes or starts over from its own buttons. Those are usage errors, exit 2.
+
 ## rundot check
 
 Finds problems in a runbook without running anything.
