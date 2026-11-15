@@ -3,6 +3,7 @@
 ```sh
 rundot RUNBOOK [--dry] [--step | --no-step] [--show-code]      # run a runbook
 rundot run RUNBOOK [--dry] [--step | --no-step] [--show-code]  # the same, in full
+rundot web [RUNBOOK] [--port N] [--no-browser]                 # run a runbook in the browser
 rundot check RUNBOOK                                           # find problems without running anything
 rundot inputs RUNBOOK                                          # list the inputs a runbook needs
 rundot library                                                 # list the books in your runbook library
@@ -309,7 +310,36 @@ Every object has `event` and `at`, when it happened, in ISO 8601 with millisecon
 
 ### --web
 
-`rundot run RUNBOOK --web`, and `rundot RUNBOOK --web`, open the runbook in the browser, as `rundot web RUNBOOK` does. With no runbook, the browser opens on the library. `--web` can't be used with `--dry`, `--step`, `--no-step`, `--show-code`, `--no-input`, `--json`, `--resume` or `--restart`: the page asks, runs one block at a time, and resumes or starts over from its own buttons. Those are usage errors, exit 2.
+`rundot run RUNBOOK --web`, and `rundot RUNBOOK --web`, do the same as [`rundot web RUNBOOK`](#rundot-web). With no runbook, the browser opens on the library, not the picker. `--web` can't be used with `--dry`, `--step`, `--no-step`, `--show-code`, `--no-input`, `--json`, `--resume` or `--restart`: the page asks, runs one block at a time, and resumes or starts over from its own buttons. Those are usage errors, exit 2.
+
+## rundot web
+
+Opens a runbook in the browser and runs it there, one block at a time. See [Run it in your browser](web.md) for how the page works.
+
+```sh
+rundot web RELEASING.md
+```
+
+```
+rundot web: http://127.0.0.1:51234/book/RELEASING?t=V8m0kq3s…
+Ctrl-C to stop
+```
+
+`RUNBOOK` is a file or a book in your library, as for [`rundot run`](#naming-a-runbook). It's checked first, and errors stop it, exit 1. With no `RUNBOOK`, the browser opens on your library.
+
+- `/` is always the library. Each book is at `/book/<name>`.
+- A runbook opened by its path is at `/book/<file name>`, or `/book/<file name>-2`, `-3` and so on if a book in your library has the same name.
+- The URL rundot prints goes straight to the runbook you named. Its `?t=` is a one-time token: the first visit swaps it for a cookie, and the server refuses anything without it. See [Security](web.md#security).
+
+The server listens on `127.0.0.1` only. It runs until you press Ctrl-C, which saves a running run as interrupted and exits 130.
+
+### --port
+
+`--port` picks the port to listen on, e.g. `--port 8000`. By default, rundot picks any free one. A port that's in use is an error, exit 1.
+
+### --no-browser
+
+`--no-browser` prints the URL, with its token, without opening the browser.
 
 ## rundot check
 
@@ -421,6 +451,7 @@ Nothing waits for an answer. Read stdout line by line for what's happening, and 
 | Code | Meaning |
 |---|---|
 | `0` | The run finished, or `check` found no errors. |
-| `1` | A block failed, the run was aborted or interrupted, `check` found errors, inputs were missing under `--no-input`, or the runbook couldn't be read. |
+| `1` | A block failed, the run was aborted or interrupted, `check` found errors, inputs were missing under `--no-input`, or the runbook couldn't be read. Ctrl-C under `rundot run` exits 1. |
 | `2` | The command was used wrongly, e.g. a runbook that doesn't exist, or flags that can't be used together, such as `--dry` with `--resume`. |
 | `3` | Human input is needed: the run stopped under `--no-input` at a `confirm`, or at an `input` block with no value. Run again once it's done. |
+| `130` | Ctrl-C stopped `rundot web`. |
