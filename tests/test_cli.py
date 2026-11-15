@@ -5,10 +5,12 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import textwrap
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
 from importlib.metadata import EntryPoint
@@ -25,6 +27,8 @@ from rundot import state as state_module
 from rundot.backends import BackendError, Problem
 from rundot.inputs import Input, InputError, NeedsHumanInput, collect
 from rundot.runbook import parse
+from rundot.web.hub import RunHub
+from rundot.web.server import WebServer
 from tests.output import finished, normalized, overview, printed, title
 
 RUNBOOKS = Path(__file__).parent / "runbooks"
@@ -2838,3 +2842,300 @@ def test_a_confirm_stopped_at_for_human_input_in_a_changed_step_is_asked_again(r
 
     assert result.exit_code == 1
     assert "Continue? [y/N]" in result.output
+
+
+# rundot web, and run --web
+
+
+class Served:
+    """What rundot web did with its real server, with webbrowser.open and serve_forever patched out."""
+
+    def __init__(self) -> None:
+        self.servers: list[WebServer] = []
+        self.browsed: list[str] = []
+        self.serve: Callable[[WebServer], None] = lambda web: None  # what serve_forever does
+
+    @property
+    def web(self) -> WebServer:
+        (web,) = self.servers
+        return web
+
+
+@pytest.fixture
+def served(monkeypatch) -> Served:
+    """Let rundot web build its server, bound to port 0, then return from serve_forever straight away.
+
+    The server is closed by rundot web on the way out, as it is however it stops.
+    """
+    served = Served()
+    monkeypatch.setattr(cli.webbrowser, "open", served.browsed.append)
+
+    def serve_forever(web: WebServer) -> None:
+        served.servers.append(web)
+        served.serve(web)
+
+    monkeypatch.setattr(WebServer, "serve_forever", serve_forever)
+    return served
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["web", "{path}"],
+        ["run", "{path}", "--web"],
+        ["{path}", "--web"],
+        ["--web", "{path}"],
+    ],
+)
+def test_web_and_run_web_open_the_same_book_on_the_same_kind_of_server(arguments, runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    result = runner.invoke(cli.cli, [argument.format(path=path) for argument in arguments])
+
+    assert result.exit_code == 0, result.output
+    web = served.web
+    assert web.address == ("127.0.0.1", web.port)
+    assert web.opened == "runbook"
+    assert [(book.name, book.path, book.title) for book in web.books()] == [("runbook", path, "Test")]
+    assert served.browsed == [web.url]
+    assert web.url == f"http://127.0.0.1:{web.port}/book/runbook?t={web.token}"
+
+
+def test_web_prints_the_url_with_its_token_and_how_to_stop(runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    result = runner.invoke(cli.cli, ["web", str(path)])
+
+    assert result.output == f"rundot web: {served.web.url}\nCtrl-C to stop\n"
+
+
+def test_web_no_browser_only_prints_the_url(runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    result = runner.invoke(cli.cli, ["web", str(path), "--no-browser"])
+
+    assert result.exit_code == 0
+    assert served.browsed == []
+    assert f"rundot web: {served.web.url}\n" in result.output
+
+
+def test_web_listens_on_the_port_given(runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+
+    result = runner.invoke(cli.cli, ["web", str(path), "--port", str(port), "--no-browser"])
+
+    assert result.exit_code == 0, result.output
+    assert served.web.port == port
+
+
+def test_web_says_why_it_cant_listen_on_a_port_in_use(runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port = taken.getsockname()[1]
+
+        result = runner.invoke(cli.cli, ["web", str(path), "--port", str(port)])
+
+    assert result.exit_code == 1
+    assert f"Error: can't listen on 127.0.0.1:{port}: " in result.output
+    assert served.servers == []
+
+
+@pytest.mark.parametrize("port", ["-1", "65536", "http"])
+def test_web_refuses_a_port_that_isnt_one(runner, served, tmp_path, port):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    result = runner.invoke(cli.cli, ["web", str(path), "--port", port])
+
+    assert result.exit_code == 2
+    assert served.servers == []
+
+
+@pytest.mark.parametrize("arguments", [["web"], ["run", "--web"], ["--web"]])
+def test_web_with_no_runbook_opens_the_library_index_not_the_picker(arguments, runner, served, monkeypatch):
+    monkeypatch.setenv("RUNDOT_LIBRARY", str(LIBRARY))
+
+    result = runner.invoke(cli.cli, arguments, input="1\n")
+
+    assert result.exit_code == 0, result.output
+    web = served.web
+    assert web.opened is None
+    assert web.library == LIBRARY
+    assert [book.name for book in web.books()] == ["say-where", "update-project-deps"]
+    assert web.url == f"http://127.0.0.1:{web.port}/?t={web.token}"
+    assert "Run which?" not in result.output
+
+
+def test_web_lists_the_library_from_the_default_location(runner, served, monkeypatch, tmp_path):
+    monkeypatch.delenv("RUNDOT_LIBRARY")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    runner.invoke(cli.cli, ["web"])
+
+    assert served.web.library == tmp_path / "runbooks"
+
+
+def test_web_lists_a_book_opened_by_path_first_then_the_library(runner, served, monkeypatch, tmp_path):
+    monkeypatch.setenv("RUNDOT_LIBRARY", str(LIBRARY))
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    runner.invoke(cli.cli, ["web", str(path)])
+
+    assert [book.name for book in served.web.books()] == ["runbook", "say-where", "update-project-deps"]
+    assert served.web.library == LIBRARY
+
+
+def test_web_opens_a_book_from_the_library_by_name_as_itself(runner, served, monkeypatch):
+    monkeypatch.setenv("RUNDOT_LIBRARY", str(LIBRARY))
+
+    result = runner.invoke(cli.cli, ["web", "say-where"])
+
+    assert result.exit_code == 0, result.output
+    assert served.web.opened == "say-where"
+    assert [book.name for book in served.web.books()] == ["say-where", "update-project-deps"]
+
+
+def test_web_gives_a_book_opened_by_path_a_name_no_library_book_has(runner, served, monkeypatch, tmp_path):
+    """A file called like a book in the library is a different book, so neither hides the other."""
+    library = tmp_path / "library"
+    library.mkdir()
+    for name in ("runbook", "runbook-2"):
+        (library / f"{name}.md").write_text("---\ntitle: In the library\n---\n")
+    monkeypatch.setenv("RUNDOT_LIBRARY", str(library))
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    runner.invoke(cli.cli, ["web", str(path)])
+
+    web = served.web
+    assert web.opened == "runbook-3"
+    assert [(book.name, book.path) for book in web.books()] == [
+        ("runbook-3", path),
+        ("runbook-2", library / "runbook-2.md"),
+        ("runbook", library / "runbook.md"),
+    ]
+    assert web.url == f"http://127.0.0.1:{web.port}/book/runbook-3?t={web.token}"
+
+
+def test_web_refuses_a_broken_runbook_as_run_does_before_starting_a_server(runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```ruby run\nputs 1\n```\n")
+    ran = runner.invoke(cli.cli, ["run", str(path)])
+
+    result = runner.invoke(cli.cli, ["web", str(path)])
+
+    assert result.exit_code == ran.exit_code == 1
+    assert result.output == ran.output
+    assert served.servers == []
+    assert served.browsed == []
+
+
+def test_web_reports_a_runbook_it_cannot_read_as_run_does(runner, served, tmp_path):
+    path = tmp_path / "runbook.md"
+    path.write_bytes(b"---\ntitle: [\n")
+    ran = runner.invoke(cli.cli, ["run", str(path)])
+
+    result = runner.invoke(cli.cli, ["web", str(path)])
+
+    assert result.exit_code == ran.exit_code == 1
+    assert result.output == ran.output
+    assert served.servers == []
+
+
+def test_web_rejects_a_runbook_that_isnt_there_as_run_does(runner, served):
+    result = runner.invoke(cli.cli, ["web", "nowhere/at-all.md"])
+
+    assert result.exit_code == 2
+    assert "no such file: nowhere/at-all.md" in result.output
+
+
+@pytest.mark.parametrize(
+    "flag", ["--dry", "--step", "--no-step", "--show-code", "--no-input", "--json", "--resume", "--restart"]
+)
+def test_run_web_with_a_flag_about_running_in_the_terminal_is_a_usage_error(flag, runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    result = runner.invoke(cli.cli, ["run", str(path), "--web", flag])
+
+    assert result.exit_code == 2
+    assert f"--web and {flag} can't be used together" in result.output
+    assert served.servers == []
+
+
+def test_run_web_ignores_rundot_no_input_since_the_page_always_has_a_person(runner, served, tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNDOT_NO_INPUT", "1")
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    result = runner.invoke(cli.cli, ["run", str(path), "--web"])
+
+    assert result.exit_code == 0, result.output
+    assert served.web.opened == "runbook"
+
+
+@pytest.mark.parametrize("flag", ["--port", "--no-browser"])
+def test_port_and_no_browser_are_only_on_web(flag, runner, served, tmp_path):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+
+    result = runner.invoke(cli.cli, ["run", str(path), "--web", flag, "8000"])
+
+    assert result.exit_code == 2
+    assert f"No such option '{flag}'" in result.output
+
+
+def test_web_ctrl_c_stops_the_run_then_the_server_and_exits_130(runner, served, tmp_path, monkeypatch):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+    calls: list[str] = []
+    monkeypatch.setattr(RunHub, "stop", lambda hub, timeout: calls.append("stop"))
+    close = WebServer.close
+    monkeypatch.setattr(WebServer, "close", lambda web: (calls.append("close"), close(web)))
+
+    def interrupted(web: WebServer) -> None:
+        raise KeyboardInterrupt
+
+    served.serve = interrupted
+
+    result = runner.invoke(cli.cli, ["web", str(path)])
+
+    assert result.exit_code == 130
+    assert calls == ["stop", "close"]
+    assert "Traceback" not in result.output
+
+
+def test_web_a_second_ctrl_c_stops_waiting_for_the_run(runner, served, tmp_path, monkeypatch):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+    closed: list[WebServer] = []
+
+    def stuck(hub: RunHub, timeout: float) -> None:
+        raise KeyboardInterrupt
+
+    def interrupted(web: WebServer) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(RunHub, "stop", stuck)
+    close = WebServer.close
+    monkeypatch.setattr(WebServer, "close", lambda web: (closed.append(web), close(web)))
+    served.serve = interrupted
+
+    result = runner.invoke(cli.cli, ["web", str(path)])
+
+    assert result.exit_code == 130
+    assert closed == [served.web]
+
+
+def test_web_closes_its_server_when_serving_ends(runner, served, tmp_path, monkeypatch):
+    path = write_runbook(tmp_path, "## Greet\n\n```sh run\necho hello\n```\n")
+    closed: list[WebServer] = []
+    close = WebServer.close
+    monkeypatch.setattr(WebServer, "close", lambda web: (closed.append(web), close(web)))
+
+    runner.invoke(cli.cli, ["web", str(path)])
+
+    assert closed == [served.web]
+
+
+def test_help_lists_the_web_command(runner):
+    result = runner.invoke(cli.cli, ["--help"])
+
+    assert re.search(r"^  web\s", result.output, re.MULTILINE)
