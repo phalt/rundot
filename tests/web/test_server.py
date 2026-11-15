@@ -1,0 +1,459 @@
+"""Tests for the rundot web server: a real server on 127.0.0.1 port 0 in a thread, driven by http.client.
+
+No browser. Every thread a test starts is joined with a timeout, and the server is shut down after each test, so a
+hang fails the test instead of stalling the suite.
+"""
+
+import http.client
+import json
+import textwrap
+import threading
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from rundot import runner
+from rundot.backends import load_backends
+from rundot.library import Book
+from rundot.runbook import parse
+from rundot.web.hub import RunHub
+from rundot.web.server import WebServer
+
+# Long enough for bash to start on a slow CI machine; only reached when something is wrong.
+TIMEOUT = 10
+
+HELLO = """\
+    ---
+    title: Say <b>hello</b>
+    description: Who to say hello to
+    ---
+
+    A paragraph with <script>alert(1)</script> raw HTML.
+
+    ## Greet
+
+    ```sh run
+    echo hello
+    ```
+    """
+
+OTHER = """\
+    ## Wait
+
+    ```confirm
+    Is the kettle on?
+    ```
+    """
+
+
+def write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(textwrap.dedent(text))
+    return path
+
+
+def starter(path: Path):
+    """The CLI's start_run, for the book at path: runs it for real, asking before each block as the web does."""
+
+    def start_run(prompter, sink, resume):
+        return runner.run(parse(path), load_backends(), sink, prompter, cwd=path.parent, block_by_block=True)
+
+    return start_run
+
+
+class Running:
+    """A server running in a thread, and what it was given."""
+
+    def __init__(self, web: WebServer, hub: RunHub, started: list[tuple[Path, bool]]) -> None:
+        self.web = web
+        self.hub = hub
+        self.started = started  # every (path, resume) start_run was made for, in order
+        self.host = f"127.0.0.1:{web.port}"
+        self.cookie = f"{web.cookie_name}={web.token}"
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        body: bytes | str | None = None,
+        *,
+        cookie: bool = True,
+        host: str | None = None,
+        origin: str | None = "",
+        headers: dict[str, str] | None = None,
+    ) -> tuple[http.client.HTTPResponse, bytes]:
+        """Make a request and read its whole response. POSTs come from the server's own origin unless told not to."""
+        response = self.open(method, path, body, cookie=cookie, host=host, origin=origin, headers=headers)
+        return response, response.read()
+
+    def open(
+        self,
+        method: str,
+        path: str,
+        body: bytes | str | None = None,
+        *,
+        cookie: bool = True,
+        host: str | None = None,
+        origin: str | None = "",
+        headers: dict[str, str] | None = None,
+    ) -> http.client.HTTPResponse:
+        """Make a request and return its response unread, for a stream."""
+        connection = http.client.HTTPConnection("127.0.0.1", self.web.port, timeout=TIMEOUT)
+        sent = {"Host": host or self.host, **(headers or {})}
+        if cookie:
+            sent["Cookie"] = self.cookie
+        if method == "POST" and origin is not None:
+            sent["Origin"] = origin or f"http://{self.host}"
+        connection.request(method, path, body=body, headers=sent)
+        return connection.getresponse()
+
+    def post(self, path: str, value: Any) -> tuple[http.client.HTTPResponse, bytes]:
+        return self.request("POST", path, json.dumps(value))
+
+
+@pytest.fixture
+def library(tmp_path) -> Path:
+    library = tmp_path / "library"
+    write(library / "hello.md", HELLO)
+    write(library / "other.md", OTHER)
+    return library
+
+
+@pytest.fixture
+def static(tmp_path) -> Path:
+    write(tmp_path / "static" / "rundot.css", "body { color: green; }\n")
+    return tmp_path / "static"
+
+
+@pytest.fixture
+def serve(library, static) -> Iterator[Callable[..., Running]]:
+    """Start a server on port 0 in a thread; it's stopped, and every thread it started joined, after the test."""
+    running: list[tuple[WebServer, RunHub, threading.Thread]] = []
+
+    def serve(
+        *,
+        books: Callable[[], list[Book]] | None = None,
+        opened: str | None = None,
+        resume_info: Callable[[Path], str | None] = lambda path: None,
+        start_run: Callable[[Path], Any] | None = None,
+    ) -> Running:
+        hub = RunHub()
+        started: list[tuple[Path, bool]] = []
+
+        def make_start_run(path: Path):
+            run = (start_run or starter)(path)
+
+            def recorded(prompter, sink, resume):
+                started.append((path, resume))
+                return run(prompter, sink, resume)
+
+            return recorded
+
+        def library_books() -> list[Book]:
+            return [
+                Book("hello", library / "hello.md", "Say <b>hello</b>", "Who to say hello to"),
+                Book("other", library / "other.md", None, None),
+            ]
+
+        web = WebServer(
+            hub,
+            books or library_books,
+            make_start_run,
+            resume_info,
+            opened=opened,
+            static=static,
+        )
+        thread = threading.Thread(target=web.serve_forever, name="rundot web test server")
+        thread.start()
+        running.append((web, hub, thread))
+        return Running(web, hub, started)
+
+    yield serve
+
+    for web, hub, thread in running:
+        hub.stop(timeout=TIMEOUT)
+        # close joins every request's thread, so it's run on its own thread to put a timeout on that.
+        closing = threading.Thread(target=web.close, name="rundot web test close")
+        closing.start()
+        closing.join(TIMEOUT)
+        thread.join(TIMEOUT)
+        assert not closing.is_alive(), "a request's thread didn't end when the server stopped"
+        assert not thread.is_alive(), "the server didn't stop"
+
+
+# The token
+
+
+def test_the_server_binds_to_127_0_0_1_on_the_port_the_os_picks(serve):
+    running = serve()
+
+    assert running.web.address == ("127.0.0.1", running.web.port)
+    assert running.web.port > 0
+    assert running.web.url == f"http://127.0.0.1:{running.web.port}/?t={running.web.token}"
+    assert len(running.web.token) >= 43  # secrets.token_urlsafe(32)
+
+
+def test_each_server_makes_its_own_token(serve):
+    assert serve().web.token != serve().web.token
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/"),
+        ("GET", "/book/hello"),
+        ("GET", "/book/hello/events"),
+        ("POST", "/book/hello/answer"),
+        ("POST", "/book/hello/run"),
+        ("GET", "/static/rundot.css"),
+        ("GET", "/book/hello/file/hello.md"),
+        ("GET", "/no/such/path"),
+    ],
+)
+def test_without_the_cookie_every_route_is_403(serve, method, path):
+    running = serve()
+
+    response, body = running.request(method, path, "{}" if method == "POST" else None, cookie=False)
+
+    assert response.status == 403
+    assert b"hello" not in body
+
+
+def test_the_right_token_sets_the_cookie_and_redirects_without_it(serve):
+    running = serve()
+
+    response, _ = running.request("GET", f"/?t={running.web.token}", cookie=False)
+
+    assert response.status == 303
+    assert response.getheader("Location") == "/"
+    cookie = response.getheader("Set-Cookie")
+    assert cookie is not None
+    assert cookie.startswith(f"{running.web.cookie_name}={running.web.token};")
+    attributes = {part.strip().lower() for part in cookie.split(";")[1:]}
+    assert {"httponly", "samesite=strict", "path=/"} <= attributes
+
+
+def test_the_token_works_on_any_page_and_keeps_the_rest_of_the_query(serve):
+    running = serve()
+
+    response, _ = running.request("GET", f"/book/hello?a=1&t={running.web.token}", cookie=False)
+
+    assert response.status == 303
+    assert response.getheader("Location") == "/book/hello?a=1"
+
+
+@pytest.mark.parametrize("token", ["wrong", "", "x" * 43])
+def test_a_wrong_token_sets_nothing(serve, token):
+    running = serve()
+
+    response, _ = running.request("GET", f"/?t={token}", cookie=False)
+
+    assert response.status == 403
+    assert response.getheader("Set-Cookie") is None
+
+
+@pytest.mark.parametrize("cookie", ["{name}=wrong", "{name}=", "{name}", "", "not a cookie", "other={token}"])
+def test_a_wrong_cookie_is_403(serve, cookie):
+    running = serve()
+    cookie = cookie.format(name=running.web.cookie_name, token=running.web.token)
+
+    response, _ = running.request("GET", "/", cookie=False, headers={"Cookie": cookie})
+
+    assert response.status == 403
+
+
+@pytest.mark.parametrize("others", ["domain=x; {cookie}", "a=1; {cookie}; b=2", 'expires="x; {cookie}'])
+def test_the_cookie_is_found_among_other_localhost_servers_cookies(serve, others):
+    """Other servers on localhost share the browser's cookies for it, whatever they've called theirs."""
+    running = serve()
+
+    response, _ = running.request("GET", "/", cookie=False, headers={"Cookie": others.format(cookie=running.cookie)})
+
+    assert response.status == 200
+
+
+def test_the_cookie_is_named_for_the_port_so_two_servers_dont_share_one(serve):
+    """Cookies don't keep to a port, so a second rundot web must not overwrite the first's."""
+    first, second = serve(), serve()
+
+    assert first.web.cookie_name == f"rundot-{first.web.port}"
+    assert first.web.cookie_name != second.web.cookie_name
+    response, _ = second.request("GET", "/", cookie=False, headers={"Cookie": first.cookie})
+    assert response.status == 403
+
+
+# Host and Origin
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+def test_the_servers_own_hosts_are_allowed(serve, host):
+    running = serve()
+
+    response, _ = running.request("GET", "/", host=f"{host}:{running.web.port}")
+
+    assert response.status == 200
+
+
+@pytest.mark.parametrize("host", ["evil.example", "evil.example:{port}", "127.0.0.1", "127.0.0.1:1", "localhost"])
+def test_a_foreign_host_is_refused(serve, host):
+    """A page on a DNS-rebound name can't reach the server, even with the cookie."""
+    running = serve()
+
+    response, _ = running.request("GET", "/", host=host.format(port=running.web.port))
+
+    assert response.status == 403
+
+
+@pytest.mark.parametrize("origin", ["http://evil.example", "null", "https://127.0.0.1:{port}", "http://127.0.0.1:1"])
+def test_a_post_from_a_foreign_origin_is_refused(serve, origin):
+    """Another site open in the browser can't click ▶."""
+    running = serve()
+
+    response, _ = running.request(
+        "POST", "/book/hello/run", json.dumps({"resume": False}), origin=origin.format(port=running.web.port)
+    )
+
+    assert response.status == 403
+    assert running.started == []
+
+
+def test_a_post_with_no_origin_is_refused(serve):
+    running = serve()
+
+    response, _ = running.request("POST", "/book/hello/run", json.dumps({"resume": False}), origin=None)
+
+    assert response.status == 403
+    assert running.started == []
+
+
+def test_a_post_from_localhost_is_allowed(serve):
+    running = serve()
+
+    response, _ = running.request(
+        "POST", "/book/hello/run", json.dumps({"resume": False}), origin=f"http://localhost:{running.web.port}"
+    )
+
+    assert response.status == 204
+
+
+# Pages
+
+
+@pytest.mark.parametrize("path", ["/", "/book/hello", "/no/such/path"])
+def test_every_response_has_the_content_security_policy(serve, path):
+    running = serve()
+
+    response, _ = running.request("GET", path)
+
+    assert response.getheader("Content-Security-Policy") == "default-src 'self'"
+
+
+def test_a_refusal_has_the_content_security_policy_too(serve):
+    response, _ = serve().request("GET", "/", cookie=False)
+
+    assert response.getheader("Content-Security-Policy") == "default-src 'self'"
+
+
+def test_the_index_lists_every_book_with_a_link_to_it(serve):
+    response, body = serve().request("GET", "/")
+
+    page = body.decode()
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "text/html; charset=utf-8"
+    assert '<a href="/book/hello">Say &lt;b&gt;hello&lt;/b&gt;</a>' in page
+    assert "Who to say hello to" in page
+    assert '<a href="/book/other">other</a>' in page
+
+
+def test_an_empty_library_says_so(serve):
+    _, body = serve(books=lambda: []).request("GET", "/")
+
+    assert "no books in the library" in body.decode()
+
+
+def test_the_index_redirects_to_the_book_opened(serve):
+    response, _ = serve(opened="hello").request("GET", "/")
+
+    assert response.status == 303
+    assert response.getheader("Location") == "/book/hello"
+
+
+def test_a_book_page_has_its_title_description_library_link_and_sanitised_body(serve):
+    response, body = serve().request("GET", "/book/hello")
+
+    page = body.decode()
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "text/html; charset=utf-8"
+    assert "<h1>Say &lt;b&gt;hello&lt;/b&gt;</h1>" in page
+    assert "Who to say hello to" in page
+    assert '<a href="/">' in page
+    assert 'class="rd-block" data-kind="run"' in page
+    assert "<script" not in page
+    assert "title:" not in page
+
+
+def test_a_book_with_no_title_is_headed_by_its_name(serve):
+    _, body = serve().request("GET", "/book/other")
+
+    assert "<h1>other</h1>" in body.decode()
+
+
+def test_a_book_that_cant_be_read_says_why(serve, library):
+    (library / "hello.md").write_bytes(b"---\ntitle: [\n")
+
+    response, body = serve().request("GET", "/book/hello")
+
+    assert response.status == 200
+    assert "frontmatter has no closing ---" in body.decode()
+
+
+def test_a_book_whose_file_has_gone_says_why(serve, library):
+    (library / "hello.md").unlink()
+
+    response, body = serve().request("GET", "/book/hello")
+
+    assert response.status == 200
+    assert "No such file" in body.decode()
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/book/nope"),
+        ("GET", "/book/nope/events"),
+        ("POST", "/book/nope/run"),
+        ("POST", "/book/nope/answer"),
+        ("GET", "/book/nope/file/hello.md"),
+        ("GET", "/book/hello/nothing"),
+        ("GET", "/book/hello/answer"),
+        ("POST", "/book/hello"),
+        ("POST", "/"),
+        ("GET", "/book"),
+        ("GET", "/book/"),
+        ("GET", "/nothing"),
+        ("GET", "/static"),
+    ],
+)
+def test_an_unknown_book_or_path_is_404(serve, method, path):
+    response, _ = serve().request(method, path, "{}" if method == "POST" else None)
+
+    assert response.status == 404
+
+
+def test_the_redirect_to_the_book_opened_is_url_encoded(serve):
+    response, _ = serve(opened="two words").request("GET", "/")
+
+    assert response.getheader("Location") == "/book/two%20words"
+
+
+def test_a_book_name_is_url_decoded(serve, library):
+    write(library / "two words.md", OTHER)
+    books = [Book("two words", library / "two words.md", None, None)]
+
+    response, body = serve(books=lambda: books).request("GET", "/book/two%20words")
+
+    assert response.status == 200
+    assert "<h1>two words</h1>" in body.decode()
+
