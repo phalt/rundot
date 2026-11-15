@@ -50,19 +50,19 @@ Tasks 1–2 change the runner and runbook, 3–5 build `rundot/web/` with no use
 Run before tasks 6 and 7 are ticked, and again before release, in a desktop browser and a phone-width window. Uses `examples/hello.md`, `tests/runbooks/all_features.md` and a library with three books.
 
 - [ ] `rundot web examples/hello.md` opens the browser on the page; the URL has no `?t=` after the first load
-- [ ] The Library link is at the top, and the inputs form is at the very top, under the title and description
-- [ ] A pattern mismatch shows its message under the field; a secret field shows dots; Start folds the form into one line with `****`
-- [ ] Only the next ▶ is enabled; output streams in under its block; stderr lines are marked red
-- [ ] A confirm shows Done and Stop; Stop ends the run as aborted
-- [ ] An `input` block shows its field in place, and is checked against `pattern` and `choices`
-- [ ] A failing block shows Retry step and Start over; Retry reruns from the start of the step
+- [x] The Library link is at the top, and the inputs form is at the very top, under the title and description
+- [x] A pattern mismatch shows its message under the field; a secret field shows dots; Start folds the form into one line with `****`
+- [x] Only the next ▶ is enabled; output streams in under its block; stderr lines are marked red
+- [x] A confirm shows Done and Stop; Stop ends the run as aborted
+- [x] An `input` block shows its field in place, and is checked against `pattern` and `choices`
+- [x] A failing block shows Retry step and Start over; Retry reruns from the start of the step
 - [ ] Reloading mid-run replays everything so far; a second tab is read-only with the busy banner
-- [ ] Stop a run in the browser, then `rundot run` the same book: it offers to resume, and the other way round
-- [ ] `rundot web` with no argument lists the library; a book opens; a running book shows `running`
-- [ ] A runbook with `<details>`, `<img width>` and a `<script>` renders the first two and drops the third
-- [ ] With the network off, fonts and styles still load
-- [ ] A flowchart, a sequence diagram and a Gantt chart in mermaid fences draw in the palette and fonts, with readable labels; a broken one stays as code with Pele's error under it
-- [ ] Ctrl-C in the terminal mid-block stops the block, saves `interrupted`, and exits
+- [x] Stop a run in the browser, then `rundot run` the same book: it offers to resume, and the other way round
+- [x] `rundot web` with no argument lists the library; a book opens; a running book shows `running`
+- [x] A runbook with `<details>`, `<img width>` and a `<script>` renders the first two and drops the third
+- [x] With the network off, fonts and styles still load
+- [x] A flowchart, a sequence diagram and a Gantt chart in mermaid fences draw in the palette and fonts, with readable labels; a broken one stays as code with Pele's error under it
+- [x] Ctrl-C in the terminal mid-block stops the block, saves `interrupted`, and exits
 
 ## Risks
 
