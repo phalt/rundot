@@ -346,3 +346,83 @@ def test_ctrl_c_while_a_quiet_block_runs_finishes_the_run_as_interrupted_when_it
     assert [event["exit_code"] for event in events if event["event"] == "block_finished"] == [130]
     assert finished(events)["status"] == "interrupted"
     assert saved(path, started_in)["stopped"] == "interrupted"
+
+
+# Filling in placeholders. The page sets each block's text from these events, so a reload or a second tab, which
+# get them replayed, show the same.
+
+FILLED = """\
+    ---
+    title: Filled in
+    inputs:
+      - name: VERSION
+        description: The version
+      - name: TOKEN
+        description: A token
+        secret: true
+    ---
+
+    ## Release
+
+    ```confirm
+    Tag <VERSION>, and never print s3cret.
+    ```
+
+    ```input
+    name: PR
+    description: The pull request number
+    ```
+
+    ```input
+    name: PIN
+    description: A pin
+    secret: true
+    ```
+
+    ```sh run
+    echo "<VERSION> <PR> $PIN"
+    ```
+    """
+
+
+def test_every_block_is_filled_in_with_plain_inputs_at_start_and_after_an_input_block(
+    serve, tmp_path, started_in, monkeypatch
+):
+    monkeypatch.setenv("VERSION", "1.2.0")
+    monkeypatch.setenv("TOKEN", "s3cret")
+    monkeypatch.setenv("PR", "42")
+    monkeypatch.setenv("PIN", "p1n-value")
+    served = serve(write(tmp_path, FILLED))
+
+    events = run(served)
+
+    [overview] = [event for event in events if event["event"] == "overview"]
+    assert list(overview["blocks"].values()) == [
+        "Tag 1.2.0, and never print ****.\n",
+        'echo "1.2.0 <PR> $PIN"\n',
+    ]
+    pr, pin = [event for event in events if event["event"] == "input_collected"]
+    assert list(pr["blocks"].values()) == ['echo "1.2.0 42 $PIN"\n']
+    assert pin["blocks"] == {}
+
+
+def test_no_secret_value_reaches_the_browser_in_the_filled_in_blocks(serve, tmp_path, started_in, monkeypatch):
+    monkeypatch.setenv("VERSION", "1.2.0")
+    monkeypatch.setenv("TOKEN", "s3cret")
+    monkeypatch.setenv("PR", "42")
+    monkeypatch.setenv("PIN", "p1n-value")
+    served = serve(write(tmp_path, FILLED))
+    run(served)
+
+    # A second tab gets the whole run replayed, as the raw stream the browser reads.
+    response = served.client.open("GET", f"/book/{served.book}/events?tab=another")
+    replayed = b""
+    while b'"run_finished"' not in replayed:
+        line = response.readline()
+        assert line, "the stream ended"
+        replayed += line
+    response.close()
+
+    assert b'"blocks"' in replayed
+    assert b"s3cret" not in replayed
+    assert b"p1n-value" not in replayed
