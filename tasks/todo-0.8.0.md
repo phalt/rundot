@@ -142,12 +142,12 @@ Every task is done test-first, in red-green slices, and also clears the standing
 ## Task 8: Docs and changelog
 
 **Acceptance criteria:**
-- [ ] `docs/cli.md`: `rundot web`, its flags, `run --web`, and the security notes (localhost only, the token)
-- [ ] `docs/index.md` and `README.md`: a short "Run it in your browser" section with a screenshot
-- [ ] `docs/runbook-format.md`: a note that raw HTML renders as on GitHub in `rundot web`
-- [ ] `docs/runbook-format.md` and `docs/cli.md`: mermaid fences render as diagrams in `rundot web`, with [Pele](https://pele.run) credited and linked; `rundot run` shows them as code
-- [ ] `CHANGELOG.md` and `docs/CHANGELOG.md` have a `## 0.8.0` section
-- [ ] `test_docs.py` passes with the new pages
+- [x] `docs/cli.md`: `rundot web`, its flags, `run --web`, and the security notes (localhost only, the token)
+- [x] `docs/index.md` and `README.md`: a short "Run it in your browser" section with a screenshot
+- [x] `docs/runbook-format.md`: a note that raw HTML renders as on GitHub in `rundot web`
+- [x] `docs/runbook-format.md` and `docs/cli.md`: mermaid fences render as diagrams in `rundot web`, with [Pele](https://pele.run) credited and linked; `rundot run` shows them as code
+- [x] `CHANGELOG.md` and `docs/CHANGELOG.md` have a `## 0.8.0` section
+- [x] `test_docs.py` passes with the new pages
 
 **Files likely touched:** `docs/cli.md`, `docs/index.md`, `docs/runbook-format.md`, `README.md`, `CHANGELOG.md`, `docs/CHANGELOG.md`, `docs/web.png`
 
