@@ -68,6 +68,7 @@ The case against, to weigh:
 18. **The URL carries a one-time token** (see [Security](#security)). Paul chose this (2026-11-14).
 19. **Every page has a Library link at the top,** beside the wordmark, including a runbook opened by path. It goes to the library index. Paul asked for this (2026-11-15).
 20. **The inputs form is always at the very top of a runbook,** under its title and description, before any prose. Once Start is pressed, it folds into one summary line of the values, with secrets shown as `****`.
+22. **Mermaid fences render as diagrams, with [Pele](https://pele.run).** A ```` ```mermaid ```` fence is drawn as an SVG diagram in the page, as GitHub draws it. Paul asked for this (2026-11-15). Pele is an MIT-licensed, dependency-free JavaScript renderer for Mermaid syntax. Its ES module ships in the package under `rundot/web/static/pele/`, with its licence and pinned version, to keep decision 14, and `rundot.js` loads it only on pages that have a mermaid fence. A fence Pele can't draw stays as code, with Pele's error under it. In the terminal, `rundot run` still shows mermaid fences as code (see [Diagrams](#diagrams)).
 
 ## The page
 
@@ -123,6 +124,30 @@ The page uses rundot.dev's own `style.css` values, so it looks like the site. Th
 - **Header:** the `run.dot` wordmark (700, `letter-spacing: -.04em`, mint dot) and the **← Library** link (decision 19), styled like the site's `.nav a`. The book's title and description follow, then the inputs form (decision 20).
 - Pills, buttons and borders follow the site's `.pill`, `.nav a` and `.term` rules.
 
+### Diagrams
+
+Pele is themed only through CSS custom properties on its root `svg.pele` or any element containing it, so the page maps them to the tokens above in `rundot.css`. Pele ships no stylesheet of its own.
+
+| Pele variable | Set to | Why |
+|---|---|---|
+| `--pele-bg` | `--panel` | The diagram sits in a panel like a code block |
+| `--pele-fg` / `--pele-muted` | `--fg` / `--fg-2` | Labels and secondary text |
+| `--pele-fg-on-dark` / `--pele-fg-on-light` | `--fg` / `--bg` | Text on fills a diagram sets itself |
+| `--pele-line` | `--fg-3` | Edges and arrowheads, quieter than text |
+| `--pele-surface` / `--pele-surface-alt` | `--bg-2` / `--bg` | Node fill, and subgraph fill |
+| `--pele-border` | `--line-2` | Node and subgraph borders |
+| `--pele-accent` | `--accent` | Highlights |
+| `--pele-critical` / `--pele-error` | `--red` | Critical Gantt tasks, and errors only, as everywhere else |
+| `--pele-font` / `--pele-font-mono` | Geist / Geist Mono stacks | The page's own fonts |
+| `--pele-radius` | `6px` | Rounded nodes, smaller than blocks' 10px |
+| `--pele-series-1` … `-6` | `--accent`, `--blue`, `--amber`, `--red`, `--accent-2`, `--fg-2` | Chart and category colours from the palette; 7 and 8 keep Pele's defaults |
+
+- **The frame:** each diagram is a `figure.rd-mermaid` with the code block's look (`--panel`, a 1px `--line` border, 10px corners, padding), centred, and scrolling sideways rather than shrinking when it's wider than the page.
+- **Fonts are measured,** so it renders once `document.fonts.ready` resolves, with `fontFamily` taken from the figure's computed style. Otherwise labels are sized for the fallback font and overflow their boxes.
+- **No network:** `images: false`, and `linkSchemes` is `http`, `https` and `mailto`, the same as the sanitiser.
+- **Colours a diagram sets itself** (`style`, `classDef`) are kept as written, as on GitHub. They don't follow the palette.
+- **Open question, settled in task 6:** Pele's docs don't say whether its SVG uses `style` attributes or a `<style>` element. Under `default-src 'self'` either would be blocked and the diagram would draw unstyled. Task 6 renders every fixture diagram, checks the SVG, and if it does need inline styles, brings the CSP change to Paul before making it.
+
 ## The library index
 
 `rundot web` with no argument lists the library (`rundot library`) as a page: each book's title and description, with a link to `/book/<name>`. A book opened from the index runs where `rundot web` was started, the same as `rundot <name>`. An empty or missing library shows the same message as `rundot library`.
@@ -172,6 +197,7 @@ On start it prints `rundot web: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 ## Documentation
 
 - `docs/cli.md`: the `web` command and its flags, and `run --web`.
+- `docs/runbook-format.md`: mermaid fences render as diagrams in `rundot web`, with Pele, credited and linked.
 - `docs/index.md` and `README.md`: a short "Run it in your browser" section with a screenshot.
 - `CHANGELOG.md`: 0.8.0 entry.
 

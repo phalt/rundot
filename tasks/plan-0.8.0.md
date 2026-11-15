@@ -27,6 +27,7 @@ Teach the runner to pause before each run block, and have `rundot.runbook` rende
 - **One event schema.** SSE `data:` lines are exactly `jsonlines.to_json` output, plus a few hub-only events (`prompt`, `busy`, `resume`). On connect, the server replays the buffer before streaming live.
 - **Static files ship in the package** under `rundot/web/static/`: `rundot.css`, `rundot.js`, and `fonts/` with Geist, Geist Mono and Instrument Serif woff2 and `OFL.txt`. Hatch includes package data by default, and a test checks that they're in the built wheel.
 - **The JS is one file with no build step,** about 200 lines: an `EventSource`, a `fetch` for answers, and DOM updates keyed by `data-line`. It's checked by the manual checklist below, not by coverage.
+- **Mermaid diagrams are drawn in the browser by Pele** (spec decision 22). Its ES module is vendored as a static file, like the fonts, and `rundot.js` imports it only on pages with a ```` ```mermaid ```` fence. Python never sees it: the sanitiser keeps the fence as `<pre><code class="language-mermaid">`, and the page swaps it for the SVG.
 - No new runtime dependencies. `http.server`, `html.parser`, `secrets`, `queue`, `threading` and `webbrowser` are enough.
 
 ## Task list
@@ -60,6 +61,7 @@ Run before tasks 6 and 7 are ticked, and again before release, in a desktop brow
 - [ ] `rundot web` with no argument lists the library; a book opens; a running book shows `running`
 - [ ] A runbook with `<details>`, `<img width>` and a `<script>` renders the first two and drops the third
 - [ ] With the network off, fonts and styles still load
+- [ ] A flowchart, a sequence diagram and a Gantt chart in mermaid fences draw in the palette and fonts, with readable labels; a broken one stays as code with Pele's error under it
 - [ ] Ctrl-C in the terminal mid-block stops the block, saves `interrupted`, and exits
 
 ## Risks
@@ -67,5 +69,7 @@ Run before tasks 6 and 7 are ticked, and again before release, in a desktop brow
 - **A runner thread stuck waiting on a prompt when the server stops.** The hub puts a "stop" answer on the queue at shutdown, and `WebPrompter` raises `KeyboardInterrupt` for it, so the runner finishes as `interrupted`. Tested in task 4.
 - **The sanitiser misses something.** CSP `default-src 'self'` is the backstop, and the tests include the usual XSS vectors: `javascript:`, `on*` attributes, `<svg><script>`, `<img src=x onerror>`, mixed-case tags and entities in URLs.
 - **SSE connections holding server threads.** `ThreadingHTTPServer` uses daemon threads, and each SSE handler loops on a queue with a timeout, so it notices the server stopping.
+- **Pele needing inline styles.** If its SVG uses `style` attributes or `<style>`, `default-src 'self'` blocks them. Checked in task 6, and any CSP change goes to Paul first.
+- **Pele growing the wheel.** About 230 KB gzipped. Loaded only on pages that need it.
 - **Font files growing the wheel.** About 250 KB for the subsets used. Checked in task 6, with Latin subsets only.
 - **The JS breaking without a test noticing.** The manual checklist, and keeping the JS small and keyed only by `data-line`.
