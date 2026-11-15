@@ -57,7 +57,7 @@ The case against, to weigh:
 8. **Resume works across front ends.** Opening a runbook that has saved state shows a banner with **Resume** and **Start over**, the browser's version of `[r]esume / [s]tart over`. Any 0.7.0 changed-runbook warning is shown in the banner too.
 9. **Transcripts are unchanged.** If `output_path` is set, the same transcript is written.
 10. **One run at a time per server,** across every book opened from the index too. Paul chose this (2026-11-14). A second tab, or another book opened while a run is going, shows a banner naming the running book and can't click. Reloading a tab replays the run's events so far, so nothing is lost.
-11. **The server lives until Ctrl-C.** When a run finishes, the page offers **Run again**, and **Back to library** when it was opened from the index. Ctrl-C while a block is running interrupts it the way Ctrl-C does under `rundot run`: state is saved as `interrupted`, then the server exits.
+11. **The server lives until Ctrl-C.** When a run finishes, the page offers **Run again**. Ctrl-C while a block is running interrupts it the way Ctrl-C does under `rundot run`: state is saved as `interrupted`, then the server exits.
 12. **The browser opens itself** with `webbrowser.open`. `--no-browser` only prints the URL. `--port` picks a port, and by default the OS picks a free one.
 13. **No new runtime dependencies.** The server is the stdlib's `http.server` (`ThreadingHTTPServer`). Output streams over Server-Sent Events. The page is plain HTML with one small script.
 14. **It works offline.** The CSS, JS and fonts ship inside the package as static files, with no CDN.
@@ -65,15 +65,21 @@ The case against, to weigh:
 16. **It looks like rundot.dev** (see [Styles](#styles)). Paul chose this (2026-11-14).
 17. **Raw HTML renders the way GitHub renders it:** allowed tags and attributes are kept and everything else is stripped (see [Security](#security)). Paul chose this over escaping it (2026-11-14), so a book that uses `<details>` or `<img width>` looks as it does on GitHub.
 18. **The URL carries a one-time token** (see [Security](#security)). Paul chose this (2026-11-14).
+19. **Every page has a Library link at the top,** beside the wordmark, including a runbook opened by path. It goes to the library index. Paul asked for this (2026-11-15).
+20. **The inputs form is always at the very top of a runbook,** under its title and description, before any prose. Once Start is pressed, it folds into one summary line of the values, with secrets shown as `****`.
 
 ## The page
 
 ```
 ┌──────────────────────────────────────────────────────┐
+│ run.dot   ← Library                                  │
+├──────────────────────────────────────────────────────┤
 │ Say hello                                            │
 │ Who to say hello to                                  │
-│ NAME [ Paul              ]            [ Start ]      │
-├──────────────────────────────────────────────────────┤
+│ ┌ inputs ──────────────────────────────────────────┐ │
+│ │ NAME [ Paul              ]            [ Start ]  │ │
+│ └──────────────────────────────────────────────────┘ │
+│                                                      │
 │ A runbook is just markdown. rundot runs the blocks…  │
 │                                                      │
 │ ## Greet                                       1/2 ✓ │
@@ -89,7 +95,6 @@ The case against, to weigh:
 │ └────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────┘
 ```
-
 - Each step heading shows `n/total` and a ✓ or ✗ once the step is done, matching the terminal's step rule (0.6.0 decision 3).
 - Code is always shown. Before Start it's shown as written, with `<NAME>`. After Start it's shown with plain inputs filled in. Secrets are never filled in, as in the terminal.
 - Output keeps the 0.6.0 meanings: stderr lines are marked red, and the block closes with `✓ exit 0 · 0.0s`, `✗ exit 3 · 0.0s` or `↷ skipped`. Blocks skipped because of a resume show `done in an earlier run`.
@@ -114,7 +119,7 @@ The page uses rundot.dev's own `style.css` values, so it looks like the site. Th
 
 - **Dark only,** like rundot.dev. There's no light theme.
 - **Fonts:** Geist for text, Geist Mono for code and output, and Instrument Serif italic for `em`, as on the site. rundot.dev loads them from Google Fonts. Here the woff2 files ship in the package with their OFL licence, to keep decision 14, falling back to the system stacks the site already lists.
-- **Header:** the `run.dot` wordmark (700, `letter-spacing: -.04em`, mint dot), then the book's title.
+- **Header:** the `run.dot` wordmark (700, `letter-spacing: -.04em`, mint dot) and the **← Library** link (decision 19), styled like the site's `.nav a`. The book's title and description follow, then the inputs form (decision 20).
 - Pills, buttons and borders follow the site's `.pill`, `.nav a` and `.term` rules.
 
 ## The library index
@@ -201,6 +206,7 @@ On start it prints `rundot read: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 - [ ] The page uses rundot.dev's colours and fonts, offline
 - [ ] The manual checklist in the plan passes
 - [ ] `rundot read` with no argument lists the library, and a book opens from it
+- [ ] Every page has a Library link at the top, and every runbook's inputs form is at the very top
 - [ ] Works with no network access, and no new runtime dependencies
 - [ ] **Proof:** someone other than Paul runs a real runbook end to end in `rundot read` without help
 - [ ] **Proof:** Paul is happy to put a `rundot read` screenshot or recording in the README
