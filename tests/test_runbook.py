@@ -815,3 +815,30 @@ def test_render_html_renders_the_body_but_not_the_frontmatter():
     html = runbook.render_html("---\ntitle: Release\n---\n\nShip *it*.\n")
 
     assert html == "<p>Ship <em>it</em>.</p>\n"
+
+
+def test_render_html_wraps_a_run_block_with_its_kind_line_and_language():
+    """A run block is an rd-block hook for the page, with the line parse gives it."""
+    html = runbook.render_html("---\ntitle: Release\n---\n\n## Step\n\n```sh run\necho hi\n```\n")
+
+    assert (
+        '<div class="rd-block" data-kind="run" data-line="7" data-lang="sh"><pre><code>echo hi\n</code></pre></div>\n'
+        in html
+    )
+
+
+@pytest.mark.parametrize("kind", ["docstring", "confirm", "input"])
+def test_render_html_wraps_other_rundot_blocks_without_a_language(kind):
+    """Docstring, confirm and input blocks are rd-blocks too, but only run blocks have a language."""
+    html = runbook.render_html(f"## Step\n\n```{kind}\nname: PR\n```\n")
+
+    assert f'<div class="rd-block" data-kind="{kind}" data-line="3"><pre><code>name: PR\n</code></pre></div>\n' in html
+
+
+def test_render_html_escapes_code_and_language_inside_blocks():
+    """Block code is shown as text, and a hostile language can't break out of its attribute."""
+    html = runbook.render_html('## Step\n\n```a"&<b run\n</code><script>alert(1)</script> & done\n```\n')
+
+    assert 'data-lang="a&quot;&amp;&lt;b"' in html
+    assert "<pre><code>&lt;/code&gt;&lt;script&gt;alert(1)&lt;/script&gt; &amp; done\n</code></pre>" in html
+    assert "<script>" not in html
