@@ -224,20 +224,20 @@ On start it prints `rundot web: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 ## Success criteria
 
 - [ ] `rundot web examples/hello.md` opens the rendered doc, and Start then ▶ ▶ runs it with output under each block
-- [ ] Only the next run block can be clicked; prose, tables and non-rundot fences render with no button
-- [ ] A `confirm` shows Done and Stop, and an `input` block shows a field validated against its `pattern` and `choices`
-- [ ] A failed block offers Retry step, which reruns from the start of that step without restarting the server
-- [ ] A run stopped in the browser resumes with `rundot run`, and a run stopped in the terminal resumes in the browser
-- [ ] Transcripts from `rundot web` match `rundot run` for the same runbook and inputs
-- [ ] No secret value is ever sent to the browser
-- [ ] Requests with a foreign `Host` or `Origin`, or without the token's cookie, are refused
-- [ ] Raw HTML renders as on GitHub, and nothing in a runbook can run a script in the page
-- [ ] The page uses rundot.dev's colours and fonts, offline
+- [x] Only the next run block can be clicked; prose, tables and non-rundot fences render with no button
+- [x] A `confirm` shows Done and Stop, and an `input` block shows a field validated against its `pattern` and `choices`
+- [x] A failed block offers Retry step, which reruns from the start of that step without restarting the server
+- [x] A run stopped in the browser resumes with `rundot run`, and a run stopped in the terminal resumes in the browser
+- [x] Transcripts from `rundot web` match `rundot run` for the same runbook and inputs
+- [x] No secret value is ever sent to the browser
+- [x] Requests with a foreign `Host` or `Origin`, or without the token's cookie, are refused
+- [x] Raw HTML renders as on GitHub, and nothing in a runbook can run a script in the page
+- [x] The page uses rundot.dev's colours and fonts, offline
 - [ ] The manual checklist in the plan passes
-- [ ] `rundot web` with no argument lists the library, and a book opens from it
-- [ ] `rundot run X --web` and `rundot X --web` do the same as `rundot web X`, and `--web` with any flag in decision 21 is a usage error
-- [ ] Every page has a Library link at the top, and every runbook's inputs form is at the very top
-- [ ] Works with no network access, and no new runtime dependencies
+- [x] `rundot web` with no argument lists the library, and a book opens from it
+- [x] `rundot run X --web` and `rundot X --web` do the same as `rundot web X`, and `--web` with any flag in decision 21 is a usage error
+- [x] Every page has a Library link at the top, and every runbook's inputs form is at the very top
+- [x] Works with no network access, and no new runtime dependencies
 - [ ] **Proof:** someone other than Paul runs a real runbook end to end in `rundot web` without help
 - [ ] **Proof:** Paul is happy to put a `rundot web` screenshot or recording in the README
 - [ ] Docs and changelog updated as listed
