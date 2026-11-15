@@ -240,7 +240,7 @@ On start it prints `rundot web: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 - [x] Works with no network access, and no new runtime dependencies
 - [ ] **Proof:** someone other than Paul runs a real runbook end to end in `rundot web` without help
 - [ ] **Proof:** Paul is happy to put a `rundot web` screenshot or recording in the README
-- [ ] Docs and changelog updated as listed
+- [x] Docs and changelog updated as listed
 
 ## Open questions
 
