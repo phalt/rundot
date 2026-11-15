@@ -15,6 +15,7 @@ import pytest
 
 from rundot import runner
 from rundot.backends import load_backends
+from rundot.inputs import Input
 from rundot.runbook import parse
 from rundot.web.hub import Busy, RunHub, WebPrompter, WrongAnswer
 
@@ -299,3 +300,61 @@ def test_a_question_the_web_has_no_control_for_is_an_error():
     """step_by_step's [y]es / [s]kip / [q]uit has no button, so the web never runs with it."""
     with pytest.raises(ValueError, match="no control answers"):
         WebPrompter(lambda name, fields: None).confirm(runner.STEP_QUESTION)
+
+
+INPUT_BLOCK = """\
+    ## Ask
+
+    ```input
+    name: NAME
+    description: Who to greet
+    ```
+
+    ```sh run
+    echo hello <NAME>
+    ```
+    """
+
+
+@pytest.mark.parametrize(
+    ("text", "options", "kind", "step"),
+    [
+        (HELLO, {}, "start", None),
+        (HELLO, {"ask_to_start": False, "block_by_block": True}, "block", "Greet"),
+        (CHECKED, {"ask_to_start": False}, "confirm", "Check"),
+        (VERSIONED, {}, "input", None),
+        (INPUT_BLOCK, {"ask_to_start": False}, "input", "Ask"),
+    ],
+    ids=["start", "run block", "confirm", "frontmatter input", "input block"],
+)
+def test_stop_while_a_prompt_is_waiting_finishes_the_run_interrupted(hub, tmp_path, text, options, kind, step):
+    """Stopping the server can't leave the run's thread waiting forever: the run ends as Ctrl-C would end it."""
+    path = write_runbook(tmp_path, text)
+    events = hub.subscribe()
+    hub.start(path, starter(path, **options), resume=False)
+    assert until(events, "prompt")[-1]["kind"] == kind
+
+    hub.stop(timeout=TIMEOUT)
+
+    seen = until(events, "run_finished")
+    assert seen[-1]["status"] == "interrupted"
+    assert seen[-1]["step"] == step
+    assert names(seen).count("run_finished") == 1
+    assert "block_finished" not in names(seen)
+    assert events.get(timeout=TIMEOUT) is None
+    assert hub.running is None
+    with pytest.raises(WrongAnswer):
+        hub.answer(kind, "y")
+
+
+def test_a_prompt_after_stop_interrupts_without_being_published():
+    """A run that was busy when stop came, such as running a block, finishes at its next prompt without showing it."""
+    published = []
+    prompter = WebPrompter(lambda name, fields: published.append(name))
+    prompter.stop()
+
+    with pytest.raises(KeyboardInterrupt):
+        prompter.confirm("Start? [y/N]")
+    with pytest.raises(KeyboardInterrupt):
+        prompter.ask(Input("NAME", "Who to greet"), None)
+    assert published == []

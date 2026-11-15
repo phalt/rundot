@@ -47,7 +47,9 @@ class WebPrompter:
         self._publish = publish
         self._lock = threading.Lock()
         self._waiting: str | None = None  # the kind of prompt waiting for an answer
-        self._answers: queue.Queue[str] = queue.Queue()
+        # None is stop's, so the runner's thread never waits on an answer that can't come.
+        self._answers: queue.Queue[str | None] = queue.Queue()
+        self._stopped = False
 
     def ask(self, input: Input, problem: str | None) -> str:
         # Never the value: the page has the input's description, and a secret's answer must not come back.
@@ -68,12 +70,26 @@ class WebPrompter:
             self._waiting = None
             self._answers.put(value)
 
+    def stop(self) -> None:
+        """Interrupt the prompt being waited on, and every later one, as Ctrl-C does at the terminal.
+
+        The runner finishes the run as interrupted for it, so the thread waiting here ends.
+        """
+        with self._lock:
+            self._stopped = True
+            self._waiting = None
+            self._answers.put(None)
+
     def _prompt(self, kind: str, fields: dict[str, Any]) -> str:
         # Waiting before it's published, so a page that answers straight away isn't refused.
         with self._lock:
+            if self._stopped:
+                raise KeyboardInterrupt
             self._waiting = kind
         self._publish("prompt", {"kind": kind, **fields})
-        return self._answers.get()
+        if (value := self._answers.get()) is None:
+            raise KeyboardInterrupt
+        return value
 
 
 class RunHub:
@@ -111,7 +127,7 @@ class RunHub:
             self._path = path
             self._prompter = prompter
             self._thread = threading.Thread(
-                target=start_run, args=(prompter, self._sink, resume), name=f"rundot run {path.name}", daemon=True
+                target=self._work, args=(start_run, prompter, resume), name=f"rundot run {path.name}", daemon=True
             )
             self._thread.start()
 
@@ -140,12 +156,27 @@ class RunHub:
         return self.running is None
 
     def stop(self, timeout: float) -> None:
-        """Stop the run, wait up to timeout seconds for its thread to end, and end every subscriber's queue."""
+        """Stop the run, wait up to timeout seconds for its thread to end, and end every subscriber's queue.
+
+        A prompt being waited on, or the run's next one, is interrupted, so the run finishes as interrupted.
+        """
+        with self._lock:
+            prompter = self._prompter
+        if prompter is not None:
+            prompter.stop()
         self.wait(timeout)
         with self._lock:
             for events in self._subscribers:
                 events.put(None)
             self._subscribers = []
+
+    def _work(self, start_run: StartRun, prompter: WebPrompter, resume: bool) -> None:
+        try:
+            start_run(prompter, self._sink, resume)
+        except KeyboardInterrupt:
+            # The runner finishes a run as interrupted once its overview is sent. Before that, while it asks for
+            # the frontmatter inputs, Ctrl-C escapes it, so the run is finished here.
+            self._sink(runner.RunFinished("interrupted", 0.0))
 
     def _running(self) -> Path | None:
         """running, for a caller that holds the lock."""
