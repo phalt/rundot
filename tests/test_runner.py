@@ -1075,6 +1075,115 @@ def test_dry_run_ignores_step_by_step(tmp_path):
     assert stepped_result.status == "dry"
 
 
+def test_block_by_block_asks_before_each_run_block_and_runs_it_on_y(tmp_path):
+    """Each run block waits for a y before it runs, so a front end can run one block per click."""
+    path = write_runbook(tmp_path, THREE_STEPS)
+    prompter = FakePrompter()
+
+    _, result = run(path, prompter, block_by_block=True)
+
+    assert prompter.questions == ["Start? [y/N]"] + [runner.BLOCK_QUESTION] * 3
+    assert (tmp_path / "built").exists()
+    assert (tmp_path / "published").exists()
+    assert (tmp_path / "announced").exists()
+    assert result.status == "ok"
+
+
+@pytest.mark.parametrize("reply", ["n", "", "Y", "yes"])
+def test_block_by_block_aborts_at_a_block_answered_anything_but_y(tmp_path, reply):
+    """Anything but y stops the run before the block: it and everything after it are left, aborted at its step."""
+    path = write_runbook(tmp_path, THREE_STEPS)
+
+    events, result = run(path, FakePrompter(replies=["y", "y", reply]), block_by_block=True)
+
+    assert (tmp_path / "built").exists()
+    assert not (tmp_path / "published").exists()
+    assert not (tmp_path / "announced").exists()
+    assert [type(event) for event in events][-3:] == [runner.StepStarted, runner.BlockStarted, runner.RunFinished]
+    assert result.status == "aborted"
+    assert result.step is not None
+    assert result.step.name == "Publish"
+    assert result.exit_code is None
+
+
+def test_block_by_block_asks_once_the_block_code_has_been_sent(tmp_path):
+    """The question comes after BlockStarted, so whatever answers it knows which block, and its line, it's for."""
+    path = write_runbook(tmp_path, "## Only\n\n```sh run\ntrue\n```\n")
+    events: list[runner.Event] = []
+    last_event_when_asked: dict[str, runner.Event] = {}
+
+    class RecordingPrompter:
+        def ask(self, input: Input, problem: str | None) -> str:
+            raise AssertionError(f"unexpected prompt for {input.name}")
+
+        def confirm(self, question: str) -> str:
+            last_event_when_asked[question] = events[-1]
+            return "y"
+
+    runner.run(parse(path), load_backends(), events.append, RecordingPrompter(), block_by_block=True, cwd=path.parent)
+
+    asked_after = last_event_when_asked[runner.BLOCK_QUESTION]
+    assert isinstance(asked_after, runner.BlockStarted)
+    assert asked_after.block.line == 3
+
+
+def test_block_by_block_only_asks_about_run_blocks(tmp_path, monkeypatch):
+    """docstring blocks are just sent, and confirm and input blocks still ask their own questions."""
+    monkeypatch.delenv("PR", raising=False)
+    path = write_runbook(tmp_path, PR_RUNBOOK)
+    prompter = FakePrompter(answers=["42"])
+
+    run(path, prompter, block_by_block=True)
+
+    assert prompter.asked == ["PR"]
+    assert prompter.questions == [
+        "Start? [y/N]",
+        runner.BLOCK_QUESTION,
+        "Continue? [y/N]",
+        runner.BLOCK_QUESTION,
+    ]
+
+
+def test_block_by_block_from_a_start_part_way_asks_only_for_the_blocks_that_run(tmp_path):
+    """A resumed run asks about the run blocks from start on, not the ones before it."""
+    path = write_runbook(tmp_path, THREE_STEPS)
+    prompter = FakePrompter()
+
+    _, result = run(path, prompter, block_by_block=True, start=(1, 0))
+
+    assert prompter.questions == ["Start? [y/N]"] + [runner.BLOCK_QUESTION] * 2
+    assert not (tmp_path / "built").exists()
+    assert (tmp_path / "published").exists()
+    assert (tmp_path / "announced").exists()
+    assert result.status == "ok"
+
+
+def test_block_by_block_asks_before_step_by_step_when_both_are_set(tmp_path):
+    """With both, a block is asked about twice, block_by_block first, and a no to it never gets to the other."""
+    path = write_runbook(tmp_path, THREE_STEPS)
+    prompter = FakePrompter(replies=["y", "y", "y", "n"])
+
+    _, result = run(path, prompter, block_by_block=True, step_by_step=True)
+
+    assert prompter.questions == ["Start? [y/N]", runner.BLOCK_QUESTION, runner.STEP_QUESTION, runner.BLOCK_QUESTION]
+    assert (tmp_path / "built").exists()
+    assert not (tmp_path / "published").exists()
+    assert result.status == "aborted"
+
+
+def test_dry_run_ignores_block_by_block(tmp_path):
+    """Nothing runs under dry, so there's nothing to ask about, and the run is exactly a plain dry run."""
+    path = write_runbook(tmp_path, THREE_STEPS)
+    prompter = FakePrompter(replies=["n", "n", "n", "n"])
+
+    paused, paused_result = run(path, prompter, dry=True, block_by_block=True)
+    plain, _ = run(path, dry=True)
+
+    assert prompter.questions == []
+    assert paused[:-1] == plain[:-1]
+    assert paused_result.status == "dry"
+
+
 @pytest.mark.parametrize(
     "seconds, expected",
     [
