@@ -1,6 +1,7 @@
 // rundot web's page script. It reads the run's events from the server and answers its prompts. Everything is keyed
 // by data-line (blocks) and data-step (step headings), as page.py writes them. The server is the source of truth:
-// on every (re)connect it replays the run so far, and this script rebuilds the page from those events.
+// on every (re)connect it replays the run so far, and this script rebuilds the page from those events. Only the tab
+// that started a run can answer it, so each tab names itself to the server, and every other tab is told it's busy.
 
 const page = document.querySelector("main.rd-book");
 if (page) book(page);
@@ -15,6 +16,7 @@ function book(main) {
   const steps = [...main.querySelectorAll(".rd-doc h2[data-step]")];
   const written = new Map([...blocks].map(([line, b]) => [line, code(b)?.textContent])); // code as written
   const banner = (name) => main.querySelector(`[data-banner="${name}"]`);
+  const tab = tabName();
   let state; // reset on every connect, and when a new run starts
 
   function reset() {
@@ -162,7 +164,7 @@ function book(main) {
     const response = await fetch(base + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, tab }),
     });
     if (response.ok) return;
     const text = await response.text();
@@ -208,7 +210,7 @@ function book(main) {
     if (action === "restart") run(false);
   });
 
-  const events = new EventSource(`${base}/events`);
+  const events = new EventSource(`${base}/events?tab=${encodeURIComponent(tab)}`);
   events.addEventListener("open", () => {
     state = undefined;
     reset();
@@ -226,6 +228,20 @@ function book(main) {
     handlers[e.event]?.(e);
     controls();
   });
+}
+
+// This tab's name. sessionStorage keeps it across reloads, and no other tab shares it, so a reloaded tab that started
+// the run can carry on with it. Without storage, as in a private window that blocks it, a reload is a new tab.
+function tabName() {
+  try {
+    const kept = sessionStorage.getItem("rundot-tab");
+    if (kept) return kept;
+    const made = crypto.randomUUID();
+    sessionStorage.setItem("rundot-tab", made);
+    return made;
+  } catch {
+    return crypto.randomUUID();
+  }
 }
 
 function code(b) {
