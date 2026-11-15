@@ -6,6 +6,7 @@ hang fails the test instead of stalling the suite.
 
 import http.client
 import json
+import os
 import textwrap
 import threading
 from collections.abc import Callable, Iterator
@@ -18,6 +19,7 @@ from rundot import runner
 from rundot.backends import load_backends
 from rundot.library import Book
 from rundot.runbook import parse
+from rundot.web import server as server_module
 from rundot.web.hub import RunHub
 from rundot.web.server import WebServer
 
@@ -456,4 +458,115 @@ def test_a_book_name_is_url_decoded(serve, library):
 
     assert response.status == 200
     assert "<h1>two words</h1>" in body.decode()
+
+
+# Files
+
+
+def test_static_files_are_served_from_the_package_directory(serve):
+    response, body = serve().request("GET", "/static/rundot.css")
+
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "text/css"
+    assert body == b"body { color: green; }\n"
+
+
+def test_the_packaged_static_directory_is_the_default():
+    assert server_module.STATIC == Path(server_module.__file__).parent / "static"
+
+
+def test_a_static_directory_that_doesnt_exist_yet_serves_nothing(serve, static, tmp_path):
+    (static / "rundot.css").unlink()
+    static.rmdir()
+
+    response, _ = serve().request("GET", "/static/rundot.css")
+
+    assert response.status == 404
+
+
+def test_a_runbooks_relative_files_are_served_from_its_directory(serve, library):
+    (library / "images").mkdir()
+    (library / "images" / "logo.png").write_bytes(b"\x89PNG")
+    (library / "notes.unknownkind").write_bytes(b"?")
+
+    running = serve()
+    response, body = running.request("GET", "/book/hello/file/images/logo.png")
+    unknown, _ = running.request("GET", "/book/hello/file/notes.unknownkind")
+
+    assert response.status == 200
+    assert response.getheader("Content-Type") == "image/png"
+    assert body == b"\x89PNG"
+    assert unknown.getheader("Content-Type") == "application/octet-stream"
+
+
+def test_a_file_name_is_url_decoded(serve, library):
+    (library / "a picture.png").write_bytes(b"\x89PNG")
+
+    response, _ = serve().request("GET", "/book/hello/file/a%20picture.png")
+
+    assert response.status == 200
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/book/hello/file/../secret.txt",
+        "/book/hello/file/images/../../secret.txt",
+        "/book/hello/file/%2e%2e/secret.txt",
+        "/book/hello/file/..%2fsecret.txt",
+        "/book/hello/file//etc/passwd",
+        "/book/hello/file/%2fetc%2fpasswd",
+        "/static/../library/hello.md",
+    ],
+)
+def test_paths_that_leave_the_directory_are_refused(serve, tmp_path, path):
+    (tmp_path / "secret.txt").write_text("secret")
+
+    response, body = serve().request("GET", path)
+
+    assert response.status == 403
+    assert b"secret" not in body.replace(b"secret.txt", b"")
+
+
+def test_a_symlink_that_leaves_the_directory_is_refused(serve, library, tmp_path):
+    (tmp_path / "secret.txt").write_text("secret")
+    (library / "escape.txt").symlink_to(tmp_path / "secret.txt")
+    (library / "outside").symlink_to(tmp_path, target_is_directory=True)
+
+    running = serve()
+    for path in ("/book/hello/file/escape.txt", "/book/hello/file/outside/secret.txt"):
+        response, body = running.request("GET", path)
+        assert response.status == 403
+        assert body != b"secret"
+
+
+def test_a_symlink_that_stays_inside_the_directory_is_served(serve, library):
+    (library / "same.md").symlink_to(library / "hello.md")
+
+    response, body = serve().request("GET", "/book/hello/file/same.md")
+
+    assert response.status == 200
+    assert body == (library / "hello.md").read_bytes()
+
+
+@pytest.mark.parametrize("name", ["missing.png", "images", "broken"])
+def test_a_missing_file_or_a_directory_is_404(serve, library, name):
+    (library / "images").mkdir()
+    (library / "broken").symlink_to(library / "nowhere")
+
+    response, _ = serve().request("GET", f"/book/hello/file/{name}")
+
+    assert response.status == 404
+
+
+def test_a_file_that_cant_be_read_is_404(serve, library):
+    unreadable = library / "locked.txt"
+    unreadable.write_text("locked")
+    unreadable.chmod(0)
+    if os.access(unreadable, os.R_OK):
+        pytest.skip("running as root, which can read any file")
+
+    response, _ = serve().request("GET", "/book/hello/file/locked.txt")
+
+    assert response.status == 404
 
