@@ -63,6 +63,7 @@ class WebServer:
         self.static = static
         self.token = secrets.token_urlsafe(32)
         self.stopping = threading.Event()
+        self._serving = False  # whether serve_forever has been called, so close knows whether to wait for it
         self._http = _HTTPServer(("127.0.0.1", port), _Handler, self)
         # Where the socket is really bound, so a test can check it's 127.0.0.1.
         self.address: tuple[str, int] = self._http.socket.getsockname()
@@ -79,15 +80,18 @@ class WebServer:
         return f"http://127.0.0.1:{self.port}{path}?t={self.token}"
 
     def serve_forever(self) -> None:
+        self._serving = True
         self._http.serve_forever(poll_interval=POLL)
 
     def close(self) -> None:
         """Stop serving, end every SSE stream, and wait for every request's thread to end.
 
-        Called from another thread than serve_forever's.
+        Called from another thread than serve_forever's, or once it has ended. A server that never served is only
+        closed, since shutdown would wait for a serve_forever that never comes.
         """
         self.stopping.set()
-        self._http.shutdown()
+        if self._serving:
+            self._http.shutdown()
         self._http.server_close()
 
 
