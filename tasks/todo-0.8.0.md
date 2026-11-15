@@ -77,15 +77,15 @@ Every task is done test-first, in red-green slices, and also clears the standing
 **Description:** `rundot/web/server.py`: a `ThreadingHTTPServer` on `127.0.0.1`, with the routes in the spec's Server table. It handles the token and cookie, `Host` and `Origin` checks, `Content-Security-Policy: default-src 'self'`, SSE from `hub.subscribe()`, static files from the package, and files from the runbook's directory with containment. Pages come from `page.py`, using simple placeholders for now. Task 6 gives them their look.
 
 **Acceptance criteria:**
-- [ ] Tested with a real server on port 0 in a thread, driven by `http.client`
-- [ ] Without the cookie, every route is 403; `/?t=<right>` sets an `HttpOnly`, `SameSite=Strict` cookie and redirects without `?t=`; a wrong token sets nothing
-- [ ] A foreign `Host` is refused; a POST with a foreign or missing `Origin` is refused
-- [ ] Every HTML response has the CSP header
-- [ ] `/book/<name>/events` replays and then streams; it ends cleanly when the server stops
-- [ ] `/answer` returns 409 for `WrongAnswer`, 400 for bad JSON, and 204 otherwise
-- [ ] `/run` starts, resumes or starts over through the `start_run` callable; it returns 409 with the busy book's name while another run is going
-- [ ] `/book/<name>/file/…` serves files in the runbook's directory and refuses `..`, absolute paths and symlinks that leave it
-- [ ] An unknown book or path is 404
+- [x] Tested with a real server on port 0 in a thread, driven by `http.client`
+- [x] Without the cookie, every route is 403; `/?t=<right>` sets an `HttpOnly`, `SameSite=Strict` cookie and redirects without `?t=`; a wrong token sets nothing
+- [x] A foreign `Host` is refused; a POST with a foreign or missing `Origin` is refused
+- [x] Every HTML response has the CSP header
+- [x] `/book/<name>/events` replays and then streams; it ends cleanly when the server stops
+- [x] `/answer` returns 409 for `WrongAnswer`, 400 for bad JSON, and 204 otherwise
+- [x] `/run` starts, resumes or starts over through the `start_run` callable; it returns 409 with the busy book's name while another run is going
+- [x] `/book/<name>/file/…` serves files in the runbook's directory and refuses `..`, absolute paths and symlinks that leave it
+- [x] An unknown book or path is 404
 
 **Files likely touched:** `rundot/web/server.py`, `rundot/web/page.py`, `tests/web/test_server.py`
 
