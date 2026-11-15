@@ -11,13 +11,13 @@ Every task is done test-first, in red-green slices, and also clears the standing
 
 ## Task 1: Runner pauses before each block, and events carry `line`
 
-**Description:** `runner.run` takes `block_by_block: bool = False`. When it's set, `prompter.confirm()` is asked before each run block, and any answer but y finishes the run as `aborted`. `BlockStarted`, `Confirm` and `InputBlock` gain `line: int`, the block's opening fence line, and `jsonlines.to_json` adds `line` to those events.
+**Description:** `runner.run` takes `block_by_block: bool = False`. When it's set, `prompter.confirm()` is asked before each run block, and any answer but y finishes the run as `aborted`. `BlockStarted`, `Confirm` and `InputBlock` already carry the block's opening fence line as `block.line`, and `jsonlines.to_json` already writes it as `line` (0.7.0); a test pins it to the fence.
 
 **Acceptance criteria:**
 - [ ] With `block_by_block=True`, the prompter is asked once before each run block and not before docstring, confirm or input blocks
 - [ ] Any answer but y finishes `aborted` at that step, and the block isn't run
 - [ ] `block_by_block` with `start` part way asks only for the blocks that will run
-- [ ] `line` is on the three events and in their JSON lines; the JSON field tests are updated
+- [ ] `line` on the three events is their opening fence line, and is in their JSON lines (already true since 0.7.0)
 - [ ] With the defaults, behaviour is unchanged (existing tests pass untouched)
 
 **Files likely touched:** `rundot/runner.py`, `rundot/jsonlines.py`, `tests/test_runner.py`, `tests/test_jsonlines.py`

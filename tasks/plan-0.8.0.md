@@ -10,7 +10,7 @@ Teach the runner to pause before each run block, and have `rundot.runbook` rende
 
 ## Architecture decisions
 
-- **The runner learns one thing:** `run(..., block_by_block=True)`, which calls `prompter.confirm()` before each run block. It also puts `line` on `BlockStarted`, `Confirm` and `InputBlock`, and `jsonlines` passes it through. It knows nothing about the web.
+- **The runner learns one thing:** `run(..., block_by_block=True)`, which calls `prompter.confirm()` before each run block. `BlockStarted`, `Confirm` and `InputBlock` already carry their block's `line`, and `jsonlines` already writes it (0.7.0). It knows nothing about the web.
 - **Only `rundot.runbook` parses markdown,** as the `runbook-owns-markdown` contract says. It gains `render_html(text) -> str`, which renders the body with markdown-it (`html=True`, tables on) and tags each rundot fence as `<div class="rd-block" data-kind="run" data-line="12" data-lang="sh">`. Other fences render as plain `<pre>`. Headings that start steps get `data-step`. The web layer fills in buttons and output around these hooks, and never reads markdown itself.
 - **`rundot/web/` is a package with four modules**, all free of click and rich, under the `cli-owns-terminal` contract:
   - `sanitise.py`: a stdlib `html.parser` allowlist sanitiser, a pure function from HTML to HTML.
