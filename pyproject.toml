@@ -96,6 +96,7 @@ name = "Module layers, from cli down to inputs"
 type = "layers"
 layers = [
     "rundot.cli",
+    "rundot.web",
     "rundot.transcript | rundot.state | rundot.jsonlines",
     "rundot.runner | rundot.validate | rundot.library",
     "rundot.backends | rundot.runbook",
@@ -141,6 +142,7 @@ id = "cli-owns-terminal"
 name = "Only the CLI uses click and rich"
 type = "forbidden"
 source_modules = [
+    "rundot.web",
     "rundot.transcript",
     "rundot.state",
     "rundot.jsonlines",
