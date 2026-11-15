@@ -125,3 +125,39 @@ def test_a_book_can_start_again_once_its_run_has_finished(hub, tmp_path):
     assert hub.wait(timeout=TIMEOUT)
 
     assert names(until(hub.subscribe(), "run_finished")).count("overview") == 1
+
+
+def test_a_subscriber_that_joins_mid_run_gets_every_earlier_event_first_in_order(hub, tmp_path):
+    """A reloaded tab loses nothing: the buffer is replayed in order, then live events follow it."""
+    path = write_runbook(
+        tmp_path,
+        """\
+        ## Count
+
+        ```sh run
+        echo one
+        echo two
+        ```
+        """,
+    )
+    paused, release = threading.Event(), threading.Event()
+    run = starter(path, ask_to_start=False)
+
+    def start_run(prompter, sink, resume):
+        def sink_pausing_after_one(event):
+            sink(event)
+            if isinstance(event, runner.OutputLine) and event.text == "one":
+                paused.set()
+                assert release.wait(TIMEOUT)
+
+        return run(prompter, sink_pausing_after_one, resume)
+
+    early = hub.subscribe()
+    hub.start(path, start_run, resume=False)
+    assert paused.wait(TIMEOUT)
+    late = hub.subscribe()
+    release.set()
+
+    everything = until(early, "run_finished")
+    assert until(late, "run_finished") == everything
+    assert [event.get("text") for event in everything if event["event"] == "output"] == ["one", "two"]
