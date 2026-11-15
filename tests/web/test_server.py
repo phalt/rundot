@@ -7,6 +7,7 @@ hang fails the test instead of stalling the suite.
 import http.client
 import json
 import os
+import queue
 import textwrap
 import threading
 from collections.abc import Callable, Iterator
@@ -569,4 +570,164 @@ def test_a_file_that_cant_be_read_is_404(serve, library):
     response, _ = serve().request("GET", "/book/hello/file/locked.txt")
 
     assert response.status == 404
+
+
+# Events
+
+
+def sse(response: http.client.HTTPResponse) -> Iterator[dict[str, Any]]:
+    """Each event an SSE response sends, until it ends."""
+    assert response.status == 200
+    while line := response.readline():
+        if line.startswith(b"data: "):
+            yield json.loads(line.removeprefix(b"data: "))
+
+
+def until(events: Iterator[dict[str, Any]], name: str) -> list[dict[str, Any]]:
+    seen = []
+    for event in events:
+        seen.append(event)
+        if event["event"] == name:
+            return seen
+    raise AssertionError(f"the stream ended before {name}: {seen}")
+
+
+def test_events_replay_the_run_so_far_then_stream_it_live(serve, library):
+    running = serve()
+    assert running.post("/book/hello/run", {"resume": False})[0].status == 204
+    path = library / "hello.md"
+    from_the_hub = running.hub.subscribe(path)
+
+    stream = running.open("GET", "/book/hello/events")
+    assert stream.getheader("Content-Type") == "text/event-stream"
+    assert stream.getheader("Cache-Control") == "no-store"
+    events = sse(stream)
+    seen = until(events, "prompt")
+    assert seen[-1]["kind"] == "start"
+    assert running.post("/book/hello/answer", {"kind": "start", "value": "y"})[0].status == 204
+    seen += until(events, "prompt")
+    assert seen[-1]["kind"] == "block"
+    assert running.post("/book/hello/answer", {"kind": "block", "value": "y"})[0].status == 204
+    seen += until(events, "run_finished")
+
+    hub_events = []
+    while (event := from_the_hub.get(timeout=TIMEOUT))["event"] != "run_finished":
+        hub_events.append(event)
+    assert seen == [*hub_events, event]
+    assert [event["text"] for event in seen if event["event"] == "output"] == ["hello"]
+    assert seen[-1]["status"] == "ok"
+
+
+def test_each_event_is_one_data_line_of_the_hubs_json_exactly(serve, library):
+    """No event: or id: fields, and no reformatting: the page reads the same objects as --json."""
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    expected = running.hub.subscribe(library / "hello.md").get(timeout=TIMEOUT)
+
+    stream = running.open("GET", "/book/hello/events")
+
+    assert stream.readline() == f"data: {json.dumps(expected, ensure_ascii=False)}\n".encode()
+    assert stream.readline() == b"\n"
+
+
+def test_events_end_when_the_hub_stops(serve):
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    events = sse(running.open("GET", "/book/hello/events"))
+    until(events, "prompt")
+
+    running.hub.stop(timeout=TIMEOUT)
+
+    assert until(events, "run_finished")[-1]["status"] == "interrupted"
+    assert list(events) == []
+
+
+def test_events_end_cleanly_when_the_server_stops(serve):
+    """Even with the run still waiting, so nothing comes on the queue: the handler notices the server stopping."""
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    events = sse(running.open("GET", "/book/hello/events"))
+    until(events, "prompt")
+
+    closing = threading.Thread(target=running.web.close)
+    closing.start()
+    closing.join(TIMEOUT)
+
+    assert not closing.is_alive()
+    assert list(events) == []
+
+
+def test_another_books_tab_is_told_which_book_is_busy(serve):
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+
+    events = sse(running.open("GET", "/book/other/events"))
+
+    assert next(events)["event"] == "busy"
+    running.hub.stop(timeout=TIMEOUT)
+    assert [event["book"] for event in events] == [None]
+
+
+def test_a_book_with_a_run_to_resume_gets_the_resume_banner(serve, library):
+    asked = []
+
+    def resume_info(path: Path) -> str | None:
+        asked.append(path)
+        return "Stopped at step 1, Greet" if path.name == "hello.md" else None
+
+    running = serve(resume_info=resume_info)
+    hello = running.open("GET", "/book/hello/events")
+    first = next(sse(hello))
+    other = sse(running.open("GET", "/book/other/events"))
+    running.hub.stop(timeout=TIMEOUT)
+
+    assert first["event"] == "resume"
+    assert first["message"] == "Stopped at step 1, Greet"
+    assert list(other) == []
+    assert asked == [library / "hello.md", library / "other.md"]
+
+
+def test_a_run_that_cant_start_shows_its_error(serve):
+    def start_run(path):
+        def broken(prompter, sink, resume):
+            raise runner.RunnerError("line 9: no backend runs 'ruby' blocks")
+
+        return broken
+
+    running = serve(start_run=start_run)
+    running.post("/book/hello/run", {"resume": False})
+
+    seen = until(sse(running.open("GET", "/book/hello/events")), "run_finished")
+
+    assert [event["event"] for event in seen] == ["error", "run_finished"]
+    assert seen[0]["message"] == "line 9: no backend runs 'ruby' blocks"
+    assert seen[1]["status"] == "failed"
+
+
+def test_an_idle_stream_sends_a_heartbeat(serve, monkeypatch):
+    monkeypatch.setattr(server_module, "HEARTBEAT", 0.0)
+    stream = serve().open("GET", "/book/hello/events")
+
+    assert stream.readline() == b":\n"
+    assert stream.readline() == b"\n"
+
+
+def test_a_closed_tab_lets_go_of_its_queue(serve, monkeypatch):
+    """The heartbeat finds the tab gone, and the handler ends instead of waiting for the server to stop."""
+    monkeypatch.setattr(server_module, "HEARTBEAT", 0.0)
+    running = serve()
+    let_go = threading.Event()
+    unsubscribe = running.hub.unsubscribe
+
+    def spy(events: "queue.Queue[dict[str, Any] | None]") -> None:
+        unsubscribe(events)
+        let_go.set()
+
+    monkeypatch.setattr(running.hub, "unsubscribe", spy)
+    stream = running.open("GET", "/book/hello/events")
+    assert stream.readline() == b":\n"
+
+    stream.close()
+
+    assert let_go.wait(TIMEOUT)
 
