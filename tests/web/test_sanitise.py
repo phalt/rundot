@@ -261,3 +261,73 @@ def test_the_fixtures_have_hooks_to_check():
     rendered = runbook.render_html((RUNBOOKS / "all_features.md").read_text(encoding="utf-8"))
 
     assert HOOK.search(rendered) and STEP.search(rendered)
+
+
+def test_comments_doctypes_and_processing_instructions_are_dropped():
+    """None of them is shown, and a conditional comment can't smuggle markup in."""
+    markup = (
+        "<!DOCTYPE html><?php echo 1 ?><!-- hidden --><!--[if IE]><script>alert(1)</script><![endif]-->a<![CDATA[b]]>"
+    )
+
+    assert sanitise(markup) == "a"
+
+
+VECTORS = [
+    "<script>alert(1)</script>",
+    "<SCRIPT SRC=//x.example/x.js></SCRIPT>",
+    "<ScRiPt>alert(1)</sCrIpT>",
+    "<scr<script>ipt>alert(1)</script>",
+    "<<script>alert(1)//<</script>",
+    "<svg><script>alert(1)</script></svg>",
+    "<svg onload=alert(1)>",
+    "<svg><a xlink:href=javascript:alert(1)><text>x</text></a></svg>",
+    "<math><mtext><table><mglyph><style><img src=x onerror=alert(1)>",
+    "<img src=x onerror=alert(1)>",
+    "<img src=x onerror=alert(1)//",
+    '<img src="x" onerror="alert(1)"',
+    "<img src=javascript:alert(1)>",
+    "<IMG SRC=JaVaScRiPt:alert(1)>",
+    "<img/src=x/onerror=alert(1)>",
+    '<img """><script>alert(1)</script>">',
+    "<body onload=alert(1)>",
+    "<a href=javascript:alert(1)>x</a>",
+    '<a href="jav&#x09;ascript:alert(1)">x</a>',
+    '<a href="&#0000106&#0000097&#0000118&#0000097&#0000115&#0000099&#0000114'
+    '&#0000105&#0000112&#0000116&#0000058alert(1)">x</a>',
+    '<a href="  &#14;  javascript:alert(1)">x</a>',
+    '<a href="data:text/html,<script>alert(1)</script>">x</a>',
+    "<iframe src=javascript:alert(1)></iframe>",
+    '<iframe srcdoc="<script>alert(1)</script>"></iframe>',
+    "<object data=javascript:alert(1)></object>",
+    "<embed src=javascript:alert(1)>",
+    "<form action=javascript:alert(1)><button>x</button></form>",
+    "<input onfocus=alert(1) autofocus>",
+    "<details open ontoggle=alert(1)>",
+    "<div style=\"background:url('javascript:alert(1)')\">x</div>",
+    "<style>@import 'javascript:alert(1)';</style>",
+    "<link rel=stylesheet href=javascript:alert(1)>",
+    "<meta http-equiv=refresh content='0;url=javascript:alert(1)'>",
+    "<base href=javascript:alert(1)//>",
+    "<p>unclosed <a href='x' onclick='alert(1)",
+    "<p title='</p><script>alert(1)</script>'>x</p>",
+    "<!--><script>alert(1)</script>-->",
+    '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></noscript>',
+    "<textarea></textarea><script>alert(1)</script>",
+    "<title><script>alert(1)</script></title>",
+    "<template><script>alert(1)</script></template>",
+]
+
+
+# Every tag the sanitiser writes: a lowercase name, then attributes with quoted, escaped values.
+WRITTEN_TAG = re.compile(r'</?([a-z0-9]+)(?: [a-z-]+(?:="[^"<>]*")?)*(?: /)?>')
+SCRIPTABLE = {"script", "svg", "math", "iframe", "object", "embed", "form", "style", "link", "meta", "base", "input"}
+
+
+@pytest.mark.parametrize("markup", VECTORS)
+def test_xss_vectors_cant_produce_a_script(markup):
+    """Every < left is a tag the sanitiser wrote, none can run script, and no attribute is a handler or javascript:."""
+    sanitised = sanitise(markup)
+
+    assert "<" not in WRITTEN_TAG.sub("", sanitised), sanitised
+    assert not SCRIPTABLE & set(WRITTEN_TAG.findall(sanitised)), sanitised
+    assert not re.search(r"\son\w+=|style=|javascript:|data:", sanitised, re.IGNORECASE), sanitised
