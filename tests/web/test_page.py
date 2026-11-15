@@ -2,6 +2,7 @@
 
 import re
 import textwrap
+from html.parser import HTMLParser
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -371,3 +372,90 @@ def test_the_resume_busy_error_failed_and_finished_banners_are_there_hidden_unti
     assert '<button type="button" data-action="resume">Retry step</button>' in failed
     assert '<button type="button" data-action="restart">Start over</button>' in failed
     assert '<button type="button" data-action="restart">Run again</button>' in banner(markup, "finished")
+
+
+# Hostile runbooks
+
+
+class Tags(HTMLParser):
+    """Every start tag in a page, with its attributes, as a browser would read them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen: list[tuple[str, list[tuple[str, str | None]]]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.seen.append((tag, attrs))
+
+
+HOSTILE = '"><script>alert(1)</script><img src=x onerror=alert(2)>'
+
+
+def test_nothing_a_runbook_gives_the_page_can_add_markup(tmp_path):
+    path = write(
+        tmp_path / "hostile.md",
+        f"""\
+        ---
+        title: '{HOSTILE}'
+        description: '{HOSTILE}'
+        inputs:
+          - name: 'A{HOSTILE}'
+            description: '{HOSTILE}'
+            default: '{HOSTILE}'
+          - name: B
+            description: '{HOSTILE}'
+            choices: ['{HOSTILE}', ok]
+          - name: C
+            description: '{HOSTILE}'
+            secret: true
+        ---
+
+        <script>alert(3)</script> <a href="javascript:alert(4)">x</a> <img src=x onerror=alert(5)>
+
+        ## {HOSTILE}
+
+        ```sh run
+        echo '{HOSTILE}' </div></pre>
+        ```
+
+        ```confirm
+        {HOSTILE}
+        ```
+
+        ```input
+        name: D
+        description: '{HOSTILE}'
+        ```
+
+        ```{HOSTILE}
+        {HOSTILE}
+        ```
+        """,
+    )
+
+    markup = page.book(Book(f"x{HOSTILE}", path, HOSTILE, HOSTILE))
+
+    tags = Tags()
+    tags.feed(markup)
+    assert [attrs for tag, attrs in tags.seen if tag == "script"] == [
+        [("type", "module"), ("src", "/static/rundot.js")]
+    ]
+    assert not [name for _, attrs in tags.seen for name, _ in attrs if name.startswith("on")]
+    assert not [value for _, attrs in tags.seen for _, value in attrs if "javascript:" in (value or "")]
+    assert 'data-book="x%22%3E%3Cscript%3E' in markup
+    # Every place the text went, it arrived as text.
+    assert markup.count("&lt;script&gt;alert(1)&lt;/script&gt;") >= 10
+
+
+def test_nothing_a_library_gives_its_index_can_add_markup(tmp_path):
+    books = [
+        Book(f"a{HOSTILE}", tmp_path / "a.md", HOSTILE, HOSTILE),
+        Book(f"b{HOSTILE}", tmp_path / "b.md", None, None, problem=HOSTILE),
+    ]
+
+    markup = page.library(books, tmp_path / HOSTILE, running=tmp_path / "a.md")
+    tags = Tags()
+    tags.feed(markup)
+
+    assert [tag for tag, _ in tags.seen if tag in ("script", "img")] == ["script"]
+    assert markup.count("&lt;script&gt;alert(1)&lt;/script&gt;") == 7
