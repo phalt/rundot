@@ -20,7 +20,7 @@
     - a `confirm` has **Done** and **Stop**, and an `input` block is a field where it sits, checked against its `pattern` and `choices`
     - when a run stops, **Retry step** runs the step again and **Start over** starts from the beginning. When it finishes, **Run again**
     - a runbook whose last run stopped part way, in the browser or the terminal, shows a banner with **Resume** and **Start over**
-    - one run at a time: another book shows which one is running, and waits. Reloading replays the run so far
+    - one run at a time: another book, or a second tab of the running book, shows which one is running, and waits. Only the tab that started a run can answer it, and reloading that tab replays the run so far
     - **← Library** on every page goes to your library
 - Raw HTML in a runbook renders as on GitHub, with tags GitHub doesn't allow removed. See [In the browser](https://docs.rundot.dev/runbook-format/#in-the-browser).
 - ```` ```mermaid ```` blocks are drawn as diagrams, with [Pele](https://pele.run).
