@@ -285,16 +285,17 @@ async function diagrams(fences) {
 }
 
 // The page's CSP blocks style attributes in markup, and Pele's SVG uses them for its theme variables and corners.
-// So they're taken off before the SVG joins the page, and set again through CSSOM, which CSP allows.
+// So in each tag they're renamed before the SVG is parsed, then set through CSSOM, which CSP allows. Pele escapes
+// the text and attributes it writes, so a tag can't hold a > or a quote of its own.
 function svgNode(svg) {
-  const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
-  const root = parsed.documentElement;
+  const renamed = svg.replace(/<[^>]+>/g, (tag) => tag.replace(/ style="/g, ' data-rd-style="'));
+  const root = new DOMParser().parseFromString(renamed, "image/svg+xml").documentElement;
   if (!(root instanceof SVGSVGElement)) throw new Error("Pele's output isn't an SVG");
-  const styles = [root, ...root.querySelectorAll("[style]")]
-    .filter((el) => el.hasAttribute("style"))
-    .map((el) => [el, el.getAttribute("style")]);
-  for (const [el] of styles) el.removeAttribute("style");
   document.adoptNode(root);
-  for (const [el, css] of styles) el.style.cssText = css;
+  for (const el of [root, ...root.querySelectorAll("[data-rd-style]")]) {
+    if (!el.hasAttribute("data-rd-style")) continue;
+    el.style.cssText = el.getAttribute("data-rd-style");
+    el.removeAttribute("data-rd-style");
+  }
   return root;
 }
