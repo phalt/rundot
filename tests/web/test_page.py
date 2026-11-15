@@ -237,3 +237,137 @@ def test_the_form_has_a_hidden_summary_line_to_fold_into():
 
     summary = markup.index('<p class="rd-inputs-summary" data-inputs-summary hidden></p>')
     assert markup.index("</form>") < summary < markup.index('<article class="rd-doc">')
+
+
+# Blocks and steps
+
+
+def test_a_run_block_has_its_language_a_disabled_play_button_its_code_an_output_area_and_a_footer():
+    assert (
+        '<div class="rd-block" data-kind="run" data-line="30" data-lang="sh"><div class="rd-block-head">'
+        '<span class="rd-lang">sh</span>'
+        '<button type="button" class="rd-play" data-action="block" disabled aria-label="Run this block">▶</button>'
+        '</div><pre><code>echo "Releasing &lt;VERSION&gt;"\n</code></pre>'
+        '<pre class="rd-output" hidden></pre><p class="rd-footer" hidden></p></div>'
+    ) in all_features()
+
+
+def test_every_run_block_has_a_play_button_and_nothing_else_does():
+    markup = all_features()
+
+    assert markup.count('data-action="block"') == 4
+    for line in (30, 50, 58, 64):
+        block = markup.split(f'data-line="{line}"', 1)[1].split('class="rd-block"', 1)[0]
+        assert 'data-action="block"' in block
+
+
+def test_fences_that_arent_rundot_blocks_are_plain_code_with_no_button():
+    markup = all_features()
+
+    assert '<pre><code class="language-sh">echo "for reading only"\n</code></pre>' in markup
+    assert '<pre><code class="language-python">print("not run")\n</code></pre>' in markup
+
+
+def test_a_confirm_is_a_callout_with_disabled_done_and_stop():
+    assert (
+        '<div class="rd-block" data-kind="confirm" data-line="46">'
+        '<pre><code>Set version = "&lt;VERSION&gt;" in pyproject.toml and save it.\n</code></pre>'
+        '<div class="rd-actions"><button type="button" data-action="done" disabled>Done</button>'
+        '<button type="button" data-action="stop" disabled>Stop</button></div></div>'
+    ) in all_features()
+
+
+def test_a_docstring_block_just_shows_its_text():
+    assert (
+        '<div class="rd-block" data-kind="docstring" data-line="26"><pre><code>Releasing &lt;VERSION&gt;.\n'
+        "</code></pre></div>"
+    ) in all_features()
+
+
+def test_an_input_block_is_a_disabled_field_where_it_sits():
+    markup = book_page(RUNBOOKS / "input-block-example.md")
+
+    assert (
+        '<div class="rd-block" data-kind="input" data-line="32"><form class="rd-input-block">'
+        '<label class="rd-field" data-input="PR"><span class="rd-field-name">PR</span>'
+        '<input type="text" name="PR" value="" autocomplete="off" disabled>'
+        '<span class="rd-field-help">The number GitHub gave the pull request</span>'
+        '<span class="rd-field-error" hidden></span></label>'
+        '<button type="submit" data-action="input" disabled>Submit</button></form></div>'
+    ) in markup
+    assert '<input type="password" name="OTP" value="" autocomplete="off" disabled>' in markup
+    assert "name: PR" not in markup
+
+
+def test_an_input_block_with_choices_is_a_disabled_select(tmp_path):
+    path = write(tmp_path / "pick.md", "## One\n\n```input\nname: PICK\ndescription: Pick\nchoices: [a, b]\n```\n")
+
+    assert '<select name="PICK" disabled><option value="a">a</option>' in book_page(path)
+
+
+def test_an_input_block_that_isnt_a_valid_input_stays_as_code(tmp_path):
+    path = write(tmp_path / "bad.md", "## One\n\n```input\nname: [\n```\n")
+
+    assert '<div class="rd-block" data-kind="input" data-line="3"><pre><code>name: [\n</code></pre></div>' in (
+        book_page(path)
+    )
+
+
+def test_each_step_heading_shows_its_number_of_the_total_and_a_place_for_its_mark():
+    markup = all_features()
+
+    assert (
+        '<h2 data-step="1"><span class="rd-step-name">Check the version</span>'
+        '<span class="rd-step-count">1/3</span><span class="rd-step-mark"></span></h2>'
+    ) in markup
+    assert '<span class="rd-step-count">3/3</span>' in markup
+    assert "<h3>Why a subheading</h3>" in markup
+
+
+def test_markup_that_only_looks_like_a_block_or_a_step_is_left_alone(tmp_path):
+    path = write(
+        tmp_path / "forged.md",
+        """\
+        ## One
+
+        <div class="rd-block" data-kind="run" data-line="99"><pre><code>rm -rf /</code></pre></div>
+
+        <div class="rd-block" data-kind="run" data-line="7"><pre><code>wrong kind</code></pre></div>
+
+        ```confirm
+        Real
+        ```
+
+        <h2 data-step="5">Not a step</h2>
+        """,
+    )
+
+    markup = book_page(path)
+
+    assert '<div class="rd-block" data-kind="run" data-line="99"><pre><code>rm -rf /</code></pre></div>' in markup
+    assert markup.count('data-action="done"') == 1
+    assert '<h2 data-step="5">Not a step</h2>' in markup
+    assert 'data-action="block"' not in markup
+
+
+# Banners
+
+
+def banner(markup: str, name: str) -> str:
+    return markup.split(f'data-banner="{name}" hidden>', 1)[1].split('<div class="rd-banner', 1)[0]
+
+
+def test_the_resume_busy_error_failed_and_finished_banners_are_there_hidden_until_the_script_shows_them():
+    markup = all_features()
+
+    assert markup.index('<div class="rd-banners">') < markup.index('<form class="rd-inputs"')
+    resume = banner(markup, "resume")
+    assert '<button type="button" data-action="resume">Resume</button>' in resume
+    assert '<button type="button" data-action="restart">Start over</button>' in resume
+    assert "data-message" in resume
+    assert "is running" in banner(markup, "busy")
+    assert "data-message" in banner(markup, "error")
+    failed = banner(markup, "failed")
+    assert '<button type="button" data-action="resume">Retry step</button>' in failed
+    assert '<button type="button" data-action="restart">Start over</button>' in failed
+    assert '<button type="button" data-action="restart">Run again</button>' in banner(markup, "finished")
