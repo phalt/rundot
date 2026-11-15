@@ -808,3 +808,10 @@ def test_parse_other_blocks_have_no_input(tmp_path):
     [block] = runbook.parse(path).steps[0].blocks
 
     assert block.input is None
+
+
+def test_render_html_renders_the_body_but_not_the_frontmatter():
+    """Only what comes after the closing --- is rendered."""
+    html = runbook.render_html("---\ntitle: Release\n---\n\nShip *it*.\n")
+
+    assert html == "<p>Ship <em>it</em>.</p>\n"
