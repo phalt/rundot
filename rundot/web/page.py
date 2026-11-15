@@ -10,6 +10,7 @@ from pathlib import Path
 from string import Template
 from urllib.parse import quote
 
+from rundot.inputs import Input
 from rundot.library import LIBRARY_VARIABLE, Book
 from rundot.runbook import RunbookError, parse, render_html
 from rundot.web.sanitise import sanitise
@@ -77,5 +78,31 @@ def _listed(book: Book, running: bool) -> str:
     return f"<li>{''.join(parts)}</li>"
 
 
-def _inputs(inputs: object) -> str:
-    return ""
+def _inputs(inputs: Sequence[Input]) -> str:
+    """The form for the frontmatter's inputs, with Start, and the line it folds into once the run starts."""
+    fields = "".join(_field(input) for input in inputs)
+    return (
+        f'<form class="rd-inputs" data-inputs>{fields}<button type="submit" data-action="start">Start</button></form>'
+        '<p class="rd-inputs-summary" data-inputs-summary hidden></p>'
+    )
+
+
+def _field(input: Input) -> str:
+    """A field for an input: a select for one with choices, a password field for a secret, or a text field."""
+    name = escape(input.name)
+    off = ""
+    if input.choices:
+        options = "".join(
+            f'<option value="{escape(choice)}"{" selected" * (choice == input.default)}>{escape(choice)}</option>'
+            for choice in input.choices
+        )
+        control = f'<select name="{name}"{off}>{options}</select>'
+    else:
+        kind = "password" if input.secret else "text"
+        value = escape(input.default or "")
+        control = f'<input type="{kind}" name="{name}" value="{value}" autocomplete="off"{off}>'
+    return (
+        f'<label class="rd-field" data-input="{name}"><span class="rd-field-name">{name}</span>{control}'
+        f'<span class="rd-field-help">{escape(input.description)}</span>'
+        '<span class="rd-field-error" hidden></span></label>'
+    )

@@ -157,3 +157,83 @@ def test_a_book_name_in_a_library_link_is_url_encoded(tmp_path):
 def test_pages_have_no_markup_left_from_their_templates(tmp_path):
     for markup in [all_features(), page.library([], tmp_path)]:
         assert "$" not in re.sub(r"<pre.*?</pre>", "", markup, flags=re.DOTALL)
+
+
+# The inputs form
+
+
+def form(markup: str) -> str:
+    return markup.split('<form class="rd-inputs" data-inputs>', 1)[1].split("</form>", 1)[0]
+
+
+def test_the_inputs_form_is_at_the_very_top_under_the_title_and_description():
+    markup = all_features()
+
+    description = markup.index('<p class="rd-description">')
+    inputs = markup.index('<form class="rd-inputs" data-inputs>')
+    document = markup.index('<article class="rd-doc">')
+    assert description < inputs < document
+
+
+def test_the_form_has_one_field_per_frontmatter_input_then_start():
+    fields = form(all_features())
+
+    assert fields == (
+        '<label class="rd-field" data-input="VERSION"><span class="rd-field-name">VERSION</span>'
+        '<input type="text" name="VERSION" value="" autocomplete="off">'
+        '<span class="rd-field-help">The version being released, e.g. 1.2.0</span>'
+        '<span class="rd-field-error" hidden></span></label>'
+        '<label class="rd-field" data-input="PUBLISH_TOKEN"><span class="rd-field-name">PUBLISH_TOKEN</span>'
+        '<input type="password" name="PUBLISH_TOKEN" value="" autocomplete="off">'
+        '<span class="rd-field-help">Token for the package index</span>'
+        '<span class="rd-field-error" hidden></span></label>'
+        '<button type="submit" data-action="start">Start</button>'
+    )
+
+
+def test_a_default_fills_its_field_in(tmp_path):
+    path = write(
+        tmp_path / "default.md",
+        """\
+        ---
+        inputs:
+          - name: NAME
+            description: Who
+            default: Paul
+        ---
+        """,
+    )
+
+    assert '<input type="text" name="NAME" value="Paul" autocomplete="off">' in form(book_page(path))
+
+
+def test_an_input_with_choices_is_a_select_with_its_default_chosen(tmp_path):
+    path = write(
+        tmp_path / "choices.md",
+        """\
+        ---
+        inputs:
+          - name: COLOUR
+            description: Which
+            choices: [red, green]
+            default: green
+        ---
+        """,
+    )
+
+    assert (
+        '<select name="COLOUR"><option value="red">red</option><option value="green" selected>green</option></select>'
+    ) in form(book_page(path))
+
+
+def test_a_book_with_no_inputs_still_has_start(tmp_path):
+    assert form(book_page(write(tmp_path / "none.md", "## One\n"))) == (
+        '<button type="submit" data-action="start">Start</button>'
+    )
+
+
+def test_the_form_has_a_hidden_summary_line_to_fold_into():
+    markup = all_features()
+
+    summary = markup.index('<p class="rd-inputs-summary" data-inputs-summary hidden></p>')
+    assert markup.index("</form>") < summary < markup.index('<article class="rd-doc">')
