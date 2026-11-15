@@ -111,7 +111,7 @@ Every task is done test-first, in red-green slices, and also clears the standing
 - [x] A ```` ```mermaid ```` fence draws as a diagram with Pele, themed with the `--pele-*` mapping in the spec's Diagrams table; Pele is only loaded on pages with one, and a fence it can't draw stays as code with its error
 - [x] Pele's SVG for a flowchart, a sequence diagram and a Gantt chart is checked for `style` attributes and `<style>`; if it needs them, the CSP change goes to Paul before it's made
 - [x] The built wheel contains `rundot/web/static/pele/` with Pele's licence and pinned version
-- [ ] The manual checklist in the plan passes
+- [x] The manual checklist in the plan passes
 
 **Files likely touched:** `rundot/web/page.py`, `rundot/web/templates/*.html`, `rundot/web/static/rundot.css`, `rundot/web/static/rundot.js`, `rundot/web/static/fonts/*`, `rundot/web/static/pele/*`, `tests/runbooks/mermaid.md`, `tests/web/test_page.py`
 
@@ -126,14 +126,14 @@ Every task is done test-first, in red-green slices, and also clears the standing
 - stops cleanly on Ctrl-C.
 
 **Acceptance criteria:**
-- [ ] `rundot web X`, `rundot run X --web` and `rundot X --web` all start the same server, for the same book (`webbrowser.open` and `serve_forever` patched)
-- [ ] With no `RUNBOOK`, it opens the library index, not the picker
-- [ ] It prints `rundot web: http://127.0.0.1:<port>/?t=<token>` and `Ctrl-C to stop`; `--no-browser` doesn't call `webbrowser.open`
-- [ ] `--web` with `--dry`, `--step`, `--show-code`, `--no-input`, `--json`, `--resume` or `--restart` is a usage error (exit 2)
-- [ ] End to end, through the server: a run of `transcript-example.md` writes the same transcript as `rundot run` with the same inputs, apart from times
-- [ ] End to end: a run failed in the web resumes with `rundot run`, and one failed with `rundot run` shows the resume banner in the web
-- [ ] Ctrl-C saves `interrupted` and exits 130, as `rundot run` does
-- [ ] A broken runbook fails `rundot web` the same way it fails `rundot run`, before the server starts
+- [x] `rundot web X`, `rundot run X --web` and `rundot X --web` all start the same server, for the same book (`webbrowser.open` and `serve_forever` patched)
+- [x] With no `RUNBOOK`, it opens the library index, not the picker
+- [x] It prints `rundot web: http://127.0.0.1:<port>/?t=<token>` and `Ctrl-C to stop`; `--no-browser` doesn't call `webbrowser.open`
+- [x] `--web` with `--dry`, `--step`, `--show-code`, `--no-input`, `--json`, `--resume` or `--restart` is a usage error (exit 2)
+- [x] End to end, through the server: a run of `transcript-example.md` writes the same transcript as `rundot run` with the same inputs, apart from times
+- [x] End to end: a run failed in the web resumes with `rundot run`, and one failed with `rundot run` shows the resume banner in the web
+- [x] Ctrl-C saves `interrupted` and exits 130, as `rundot run` does
+- [x] A broken runbook fails `rundot web` the same way it fails `rundot run`, before the server starts
 
 **Files likely touched:** `rundot/cli.py`, `tests/test_cli.py`, `tests/web/test_end_to_end.py`
 
