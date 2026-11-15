@@ -53,7 +53,8 @@ class RunbookError(Exception):
     """The runbook can't be read: broken frontmatter, or text that isn't UTF-8."""
 
 
-_MARKDOWN = MarkdownIt("commonmark")
+# Tables are on, as on GitHub. parse and render_html share this, so steps and lines agree between them.
+_MARKDOWN = MarkdownIt("commonmark").enable("table")
 
 
 def parse(path: Path) -> Runbook:

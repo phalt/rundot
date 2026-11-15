@@ -865,3 +865,38 @@ def test_render_html_numbers_step_headings_in_order():
     assert '<h2 data-step="2">Second</h2>' in html
     assert '<h2 data-step="3">Third</h2>' in html
     assert html.count("data-step") == 3
+
+
+def test_render_html_renders_prose_lists_links_and_images():
+    """Everything between blocks renders as markdown, so the page shows the documentation half."""
+    html = runbook.render_html(
+        "Read [the docs](https://rundot.dev) first.\n\n- one\n- two\n\n1. first\n\n![logo](logo.png \"Logo\")\n"
+    )
+
+    assert html == (
+        '<p>Read <a href="https://rundot.dev">the docs</a> first.</p>\n'
+        "<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n"
+        "<ol>\n<li>first</li>\n</ol>\n"
+        '<p><img src="logo.png" alt="logo" title="Logo" /></p>\n'
+    )
+
+
+def test_render_html_renders_tables():
+    """Tables are on, as on GitHub."""
+    html = runbook.render_html("| Key | Value |\n|---|--:|\n| a | 1 |\n")
+
+    assert html == (
+        "<table>\n<thead>\n<tr>\n<th>Key</th>\n"
+        '<th style="text-align:right">Value</th>\n</tr>\n</thead>\n'
+        "<tbody>\n<tr>\n<td>a</td>\n"
+        '<td style="text-align:right">1</td>\n</tr>\n</tbody>\n</table>\n'
+    )
+
+
+def test_render_html_passes_raw_html_through_for_the_sanitiser():
+    """Raw HTML is kept as written here; rundot.web's sanitiser decides what survives."""
+    html = runbook.render_html('<details><summary>More</summary>\n\nHidden.\n\n</details>\n\n<script>alert(1)</script>\n')
+
+    assert "<details><summary>More</summary>\n" in html
+    assert "<p>Hidden.</p>\n</details>\n" in html
+    assert "<script>alert(1)</script>\n" in html
