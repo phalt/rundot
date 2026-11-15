@@ -1,7 +1,9 @@
 """Tests for the pages rundot web serves: the book page and the library index, built by rundot.web.page."""
 
 import re
+import subprocess
 import textwrap
+import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -12,6 +14,8 @@ from rundot.library import Book
 from rundot.web import page
 
 RUNBOOKS = Path(__file__).parent.parent / "runbooks"
+ROOT = Path(__file__).parent.parent.parent
+WEB = ROOT / "rundot" / "web"
 
 
 def write(path: Path, text: str) -> Path:
@@ -459,3 +463,103 @@ def test_nothing_a_library_gives_its_index_can_add_markup(tmp_path):
 
     assert [tag for tag, _ in tags.seen if tag in ("script", "img")] == ["script"]
     assert markup.count("&lt;script&gt;alert(1)&lt;/script&gt;") == 7
+
+
+# What ships
+
+
+def test_the_built_wheel_has_every_static_file_and_template_with_the_licences(tmp_path):
+    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(tmp_path), "--quiet"], cwd=ROOT, check=True)
+    [wheel] = tmp_path.glob("rundot-*.whl")
+
+    shipped = set(zipfile.ZipFile(wheel).namelist())
+
+    here = {
+        str(path.relative_to(ROOT))
+        for folder in ("static", "templates")
+        for path in (WEB / folder).rglob("*")
+        if path.is_file()
+    }
+    assert here <= shipped
+    for needed in [
+        "rundot/web/static/rundot.css",
+        "rundot/web/static/rundot.js",
+        "rundot/web/static/fonts/OFL.txt",
+        "rundot/web/static/fonts/geist-latin-400-normal.woff2",
+        "rundot/web/static/fonts/geist-mono-latin-400-normal.woff2",
+        "rundot/web/static/fonts/instrument-serif-latin-400-italic.woff2",
+        "rundot/web/static/pele/pele.js",
+        "rundot/web/static/pele/LICENSE",
+        "rundot/web/static/pele/VERSION",
+        "rundot/web/templates/page.html",
+    ]:
+        assert needed in shipped
+
+
+def test_the_fonts_are_latin_subsets_only_and_licensed():
+    fonts = sorted(path.name for path in (WEB / "static" / "fonts").glob("*.woff2"))
+
+    assert fonts and all("-latin-" in font for font in fonts)
+    licence = (WEB / "static" / "fonts" / "OFL.txt").read_text()
+    assert "SIL OPEN FONT LICENSE Version 1.1" in licence
+    assert "The Geist Project Authors" in licence
+    assert "The Instrument Serif Project Authors" in licence
+
+
+def test_pele_has_its_licence_and_pinned_version():
+    pele = WEB / "static" / "pele"
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+\n", (pele / "VERSION").read_text())
+    assert "MIT License" in (pele / "LICENSE").read_text()
+
+
+def test_every_font_the_stylesheet_uses_ships_with_it():
+    css = (WEB / "static" / "rundot.css").read_text()
+
+    used = re.findall(r"url\(\s*['\"]?([^'\")]+)", css)
+    assert used
+    for url in used:
+        assert (WEB / "static" / url).is_file(), url
+
+
+def test_no_url_in_the_stylesheet_script_or_templates_points_off_the_server():
+    files = [WEB / "static" / "rundot.css", WEB / "static" / "rundot.js", *(WEB / "templates").glob("*.html")]
+
+    for path in files:
+        text = path.read_text()
+        assert not re.findall(r"(?:[a-z][a-z0-9+.-]*:)?//[\w.-]+", text, flags=re.I), path.name
+        for url in re.findall(r"(?:url\(|src=|href=|import\()\s*['\"]?([^'\")\s>]+)", text):
+            assert url.startswith(("/", "./", "fonts/", "#", "${")) and not url.startswith("//"), (path.name, url)
+
+
+def test_pele_names_no_url_but_xml_namespaces():
+    pele = (WEB / "static" / "pele" / "pele.js").read_text()
+
+    assert set(re.findall(r"[a-z]+://[^\s'\"`]+", pele)) == {
+        "http://www.w3.org/2000/svg",
+        "http://www.w3.org/1999/xhtml",
+    }
+
+
+# Diagrams
+
+
+def test_a_mermaid_fence_reaches_the_page_as_code_for_the_script_to_draw():
+    markup = book_page(RUNBOOKS / "mermaid.md")
+
+    assert markup.count('<pre><code class="language-mermaid">') == 4
+    assert "flowchart LR\n  A[Write the runbook] --&gt; B{Does it run?}" in markup
+
+
+def test_no_page_loads_pele_itself():
+    for markup in [book_page(RUNBOOKS / "mermaid.md"), all_features()]:
+        assert "pele" not in markup
+
+
+def test_the_script_loads_pele_only_when_the_page_has_a_mermaid_fence():
+    script = (WEB / "static" / "rundot.js").read_text()
+
+    [loaded] = re.findall(r".*import\(.*", script)
+    assert 'import("./pele/pele.js")' in loaded
+    assert "if (fences.length) diagrams(fences);" in script
+    assert 'document.querySelectorAll("pre > code.language-mermaid")' in script
