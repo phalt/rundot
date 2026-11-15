@@ -1171,6 +1171,26 @@ def test_block_by_block_asks_before_step_by_step_when_both_are_set(tmp_path):
     assert result.status == "aborted"
 
 
+def test_confirm_input_and_run_block_events_carry_the_line_of_their_opening_fence(tmp_path, monkeypatch):
+    """A front end finds the rendered block an event is about by its line, so it must be the fence's own line."""
+    monkeypatch.delenv("PR", raising=False)
+    path = write_runbook(tmp_path, PR_RUNBOOK)
+    fences = [
+        number for number, line in enumerate(PR_RUNBOOK.splitlines(), 1) if line.startswith("```") and line != "```"
+    ]
+
+    events, _ = run(path, FakePrompter(answers=["42"]))
+
+    lines = {
+        kind: [event.block.line for event in events if isinstance(event, kind)]
+        for kind in (runner.BlockStarted, runner.Confirm, runner.InputBlock, runner.Docstring)
+    }
+    assert lines[runner.BlockStarted] == [fences[0], fences[3]]
+    assert lines[runner.Confirm] == [fences[1]]
+    assert lines[runner.InputBlock] == [fences[2]]
+    assert lines[runner.Docstring] == [fences[4]]
+
+
 def test_dry_run_ignores_block_by_block(tmp_path):
     """Nothing runs under dry, so there's nothing to ask about, and the run is exactly a plain dry run."""
     path = write_runbook(tmp_path, THREE_STEPS)
