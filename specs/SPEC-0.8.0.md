@@ -7,7 +7,7 @@ This builds on [SPEC-0.7.0.md](SPEC-0.7.0.md), [SPEC-0.6.0.md](SPEC-0.6.0.md), [
 
 ## Objective
 
-`rundot read` opens a runbook in the browser as the whole rendered markdown document, prose included, and runs it there one block at a time. Each run block has a ▶ button, and its output streams in underneath it.
+`rundot web` opens a runbook in the browser as the whole rendered markdown document, prose included, and runs it there one block at a time. Each run block has a ▶ button, and its output streams in underneath it.
 
 This is a first-class runner, not a preview. It drives the same `Runner` as `rundot run`, so inputs, secret masking, confirms, transcripts and resume behave the same. Only the front end is different.
 
@@ -19,7 +19,7 @@ The runbook format doesn't change.
 
 A runbook is documentation that runs. The terminal shows the running half and hides the documentation half: `rundot run` prints docstrings, but the prose, links, tables and images between blocks never appear. Someone following an onboarding guide needs that prose most. Today they read the doc on GitHub in one window and run it in another.
 
-`rundot read` puts both halves on one page. The case for it:
+`rundot web` puts both halves on one page. The case for it:
 
 - **Reading while running.** The doc and its output sit together. The reader sees why a step exists right next to what it printed.
 - **A lower bar for other people.** Click ▶, fill in a form, click Done. No flags, no `[r]esume / [s]tart over / [q]uit`.
@@ -34,23 +34,23 @@ The case against, to weigh:
 
 **This is worth shipping if** (see [Success criteria](#success-criteria)):
 
-1. someone other than Paul does a real runbook end to end in `rundot read` without help, such as a dev-setup guide or `examples/hello.md`, and
+1. someone other than Paul does a real runbook end to end in `rundot web` without help, such as a dev-setup guide or `examples/hello.md`, and
 2. Paul would use it in place of `docs/demo.svg` in a talk or the README.
 
 ### User stories
 
-- As a newcomer, I run `rundot read SETUP.md` and my browser opens on the guide. I read it, fill in the inputs, and click ▶ on each block in turn, seeing its output under it.
+- As a newcomer, I run `rundot web SETUP.md` and my browser opens on the guide. I read it, fill in the inputs, and click ▶ on each block in turn, seeing its output under it.
 - As a newcomer, when a block fails, I read the error under it, fix the problem, and click **Retry step** without going back to the terminal.
 - As a newcomer, a `confirm` shows up as a callout with **Done** and **Stop**, so I know exactly what I have to do by hand.
-- As Paul, `rundot read` with no runbook opens my library as an index page, and I click a book to open it.
+- As Paul, `rundot web` with no runbook opens my library as an index page, and I click a book to open it.
 - As Paul, a run in the browser leaves the same transcript and resume state as `rundot run`, so I can start in the browser and finish in the terminal, or the other way round.
 
 ## Decisions
 
-1. **The command is `rundot read [RUNBOOK]`.** `RUNBOOK` is resolved the way `rundot run` resolves it: a path, or a name in the library. With no argument it opens the library index (see [The library index](#the-library-index)). Paul chose the name `read` over `web`, `run --web`, `serve` and `open` (2026-11-14): it says what the page is for, reading the runbook while it runs. As with every command, the name wins over a book called `read.md`, which runs with `rundot run read`.
+1. **The command is `rundot web [RUNBOOK]`.** `RUNBOOK` is resolved the way `rundot run` resolves it: a path, or a name in the library. With no argument it opens the library index (see [The library index](#the-library-index)). Paul chose the name `web` over `read`, `run --web`, `serve` and `open` (2026-11-15), after trying `read` for a day. As with every command, the name wins over a book called `web.md`, which runs with `rundot run web`.
 2. **It's the same Runner.** The server calls `runner.run()` on a worker thread with a `WebPrompter` and a sink that sends events to the page. No block runs except through `run()`.
 3. **Strict order, one block per click.** Only the next run block's ▶ is enabled. Earlier blocks are done, and later ones are locked. Paul chose this over free-form running (2026-11-14). Docstring blocks just render, and confirm and input blocks become controls in the page (decision 6).
-4. **Blocks run where `rundot read` was started,** the same as `rundot run` (0.7.0), with `RUNDOT_RUNBOOK_DIR` set.
+4. **Blocks run where `rundot web` was started,** the same as `rundot run` (0.7.0), with `RUNDOT_RUNBOOK_DIR` set.
 5. **The whole document is rendered,** with markdown-it-py: frontmatter `title` as the heading, `description` under it, then every heading, paragraph, list, table, link, image and code block. Fenced blocks that aren't `run`, `docstring`, `confirm` or `input` render as plain code with no button.
 6. **Prompts are inline.** Frontmatter inputs are a form at the top with a **Start** button, and Start is the `Start? [y/N]` answer. Secrets are password fields. An `input` block becomes the same kind of field where it sits in the doc. A `confirm` is a callout with **Done** (yes) and **Stop** (no, which aborts).
 7. **Failure keeps the server up.** A failed block, a Stop or an abort ends the run as `rundot run` does, and state is saved as in 0.7.0. The page then offers **Retry step**, which resumes from the start of the step (0.7.0 decision 1), and **Start over**, which is the same as `--restart`.
@@ -61,7 +61,7 @@ The case against, to weigh:
 12. **The browser opens itself** with `webbrowser.open`. `--no-browser` only prints the URL. `--port` picks a port, and by default the OS picks a free one.
 13. **No new runtime dependencies.** The server is the stdlib's `http.server` (`ThreadingHTTPServer`). Output streams over Server-Sent Events. The page is plain HTML with one small script.
 14. **It works offline.** The CSS, JS and fonts ship inside the package as static files, with no CDN.
-15. **`--dry`, `--no-input`, `--json` and `--step` don't apply** to `rundot read`. It's stepped by nature, it always has a person, and it isn't for agents.
+15. **`--dry`, `--no-input`, `--json` and `--step` don't apply** to `rundot web`. It's stepped by nature, it always has a person, and it isn't for agents.
 16. **It looks like rundot.dev** (see [Styles](#styles)). Paul chose this (2026-11-14).
 17. **Raw HTML renders the way GitHub renders it:** allowed tags and attributes are kept and everything else is stripped (see [Security](#security)). Paul chose this over escaping it (2026-11-14), so a book that uses `<details>` or `<img width>` looks as it does on GitHub.
 18. **The URL carries a one-time token** (see [Security](#security)). Paul chose this (2026-11-14).
@@ -124,7 +124,7 @@ The page uses rundot.dev's own `style.css` values, so it looks like the site. Th
 
 ## The library index
 
-`rundot read` with no argument lists the library (`rundot library`) as a page: each book's title and description, with a link to `/book/<name>`. A book opened from the index runs where `rundot read` was started, the same as `rundot <name>`. An empty or missing library shows the same message as `rundot library`.
+`rundot web` with no argument lists the library (`rundot library`) as a page: each book's title and description, with a link to `/book/<name>`. A book opened from the index runs where `rundot web` was started, the same as `rundot <name>`. An empty or missing library shows the same message as `rundot library`.
 
 ## Runner changes
 
@@ -161,14 +161,14 @@ The page uses rundot.dev's own `style.css` values, so it looks like the site. Th
 ## Commands (CLI)
 
 ```
-rundot read [RUNBOOK] [--port N] [--no-browser]
+rundot web [RUNBOOK] [--port N] [--no-browser]
 ```
 
-On start it prints `rundot read: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
+On start it prints `rundot web: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 
 ## Documentation
 
-- `docs/cli.md`: the `read` command and its flags.
+- `docs/cli.md`: the `web` command and its flags.
 - `docs/index.md` and `README.md`: a short "Run it in your browser" section with a screenshot.
 - `CHANGELOG.md`: 0.8.0 entry.
 
@@ -194,22 +194,22 @@ On start it prints `rundot read: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 
 ## Success criteria
 
-- [ ] `rundot read examples/hello.md` opens the rendered doc, and Start then ▶ ▶ runs it with output under each block
+- [ ] `rundot web examples/hello.md` opens the rendered doc, and Start then ▶ ▶ runs it with output under each block
 - [ ] Only the next run block can be clicked; prose, tables and non-rundot fences render with no button
 - [ ] A `confirm` shows Done and Stop, and an `input` block shows a field validated against its `pattern` and `choices`
 - [ ] A failed block offers Retry step, which reruns from the start of that step without restarting the server
 - [ ] A run stopped in the browser resumes with `rundot run`, and a run stopped in the terminal resumes in the browser
-- [ ] Transcripts from `rundot read` match `rundot run` for the same runbook and inputs
+- [ ] Transcripts from `rundot web` match `rundot run` for the same runbook and inputs
 - [ ] No secret value is ever sent to the browser
 - [ ] Requests with a foreign `Host` or `Origin`, or without the token's cookie, are refused
 - [ ] Raw HTML renders as on GitHub, and nothing in a runbook can run a script in the page
 - [ ] The page uses rundot.dev's colours and fonts, offline
 - [ ] The manual checklist in the plan passes
-- [ ] `rundot read` with no argument lists the library, and a book opens from it
+- [ ] `rundot web` with no argument lists the library, and a book opens from it
 - [ ] Every page has a Library link at the top, and every runbook's inputs form is at the very top
 - [ ] Works with no network access, and no new runtime dependencies
-- [ ] **Proof:** someone other than Paul runs a real runbook end to end in `rundot read` without help
-- [ ] **Proof:** Paul is happy to put a `rundot read` screenshot or recording in the README
+- [ ] **Proof:** someone other than Paul runs a real runbook end to end in `rundot web` without help
+- [ ] **Proof:** Paul is happy to put a `rundot web` screenshot or recording in the README
 - [ ] Docs and changelog updated as listed
 
 ## Open questions
