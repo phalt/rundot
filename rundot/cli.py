@@ -1,5 +1,7 @@
 import os
 import sys
+import threading
+import webbrowser
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
@@ -18,12 +20,14 @@ from rich.text import Text
 
 from rundot import library, runner, settings, state
 from rundot.backends import Backend, BackendError, load_backend_sources, load_backends
-from rundot.inputs import Input, InputError, NeedsHumanInput
+from rundot.inputs import Input, InputError, NeedsHumanInput, Prompter
 from rundot.jsonlines import JsonLines
 from rundot.runbook import Runbook, RunbookError, Step, parse, parse_inputs, read_frontmatter
 from rundot.state import RunState, StateError, StateRecorder
 from rundot.transcript import Transcript, TranscriptError
 from rundot.validate import Report, validate
+from rundot.web.hub import RunHub, Sink, StartRun
+from rundot.web.server import WebServer
 
 
 class RunsByDefault(click.Group):
@@ -116,6 +120,7 @@ class RunbookArgument(click.ParamType):
     help="Print each event as a line of JSON on stdout, for agents. Everything else goes to stderr. "
     "Implies --no-input.",
 )
+@click.option("--web", is_flag=True, help="Open the runbook in the browser and run it there, as rundot web does.")
 def run_runbook(
     runbook: Path | None,
     dry: bool,
@@ -125,6 +130,7 @@ def run_runbook(
     restart: bool,
     no_input: bool,
     as_json: bool,
+    web: bool,
 ) -> None:
     """Run a runbook's steps in order, stopping at the first that fails. Blocks run in the current directory.
 
@@ -133,7 +139,25 @@ def run_runbook(
 
     A run that stops part way can be resumed at the step it stopped in: rundot asks the next time it's run
     in the same directory. Exit codes: 0 success, 1 failure, 2 usage error, 3 human input is needed.
+
+    --web opens the runbook in the browser instead, as rundot web does.
     """
+    if web:
+        # In the browser, the page asks, steps one block at a time, and resumes or starts over from its banner.
+        terminal_only = [
+            ("--dry", dry),
+            ("--step" if step else "--no-step", step is not None),
+            ("--show-code", show_code),
+            ("--no-input", no_input),
+            ("--json", as_json),
+            ("--resume", resume),
+            ("--restart", restart),
+        ]
+        for flag, given in terminal_only:
+            if given:
+                raise click.UsageError(f"--web and {flag} can't be used together")
+        _web(runbook, port=0, browser=True)
+        return
     # Only exactly 1, so a stray RUNDOT_NO_INPUT= or =0 can't turn it on.
     # --json implies --no-input, since a prompt would put text that isn't JSON on stdout.
     no_input_by = (
@@ -314,9 +338,7 @@ def _resuming(
         RunState.delete(saved_at)
         return None, False
     name, _ = stopped.steps[stopped.step]
-    how = f"failed (exit {stopped.exit_code})" if stopped.stopped == "failed" else _STOPPED[stopped.stopped]
-    when = datetime.fromisoformat(stopped.started_at).astimezone().strftime("%Y-%m-%d %H:%M")
-    console.out(f"Last run stopped at {stopped.step + 1}/{len(runbook.steps)} {name}: {how}, {when}.")
+    console.out(_stopped_at(runbook, stopped))
     if changes := _changes(runbook, stopped):
         console.out(f"{given.name} has changed since that run: {changes}.", style="yellow")
     if not ask:
@@ -329,6 +351,14 @@ def _resuming(
         return replace(stopped, block=0), False
     at = runbook.steps[stopped.step].blocks[stopped.block]
     return stopped, stopped.stopped == "needs_human_input" and at.kind == "confirm"
+
+
+def _stopped_at(runbook: Runbook, stopped: RunState) -> str:
+    """Where and how a stopped run stopped, and when it started, as both front ends say it."""
+    name, _ = stopped.steps[stopped.step]
+    how = f"failed (exit {stopped.exit_code})" if stopped.stopped == "failed" else _STOPPED[stopped.stopped]
+    when = datetime.fromisoformat(stopped.started_at).astimezone().strftime("%Y-%m-%d %H:%M")
+    return f"Last run stopped at {stopped.step + 1}/{len(runbook.steps)} {name}: {how}, {when}."
 
 
 def _changes(runbook: Runbook, stopped: RunState) -> str:
@@ -393,6 +423,174 @@ def _pick(console: Console) -> Path:
 def _shown_from(path: Path, cwd: Path) -> Path:
     """path relative to cwd if it's inside it, so it's short and works from there, otherwise as it is."""
     return path.relative_to(cwd) if path.is_relative_to(cwd) else path
+
+
+@cli.command()
+@click.argument("runbook", type=RunbookArgument(), required=False)
+@click.option(
+    "--port", type=click.IntRange(0, 65535), default=0, help="The port to listen on. By default, any free one."
+)
+@click.option("--no-browser", is_flag=True, help="Only print the URL to open, with its token.")
+def web(runbook: Path | None, port: int, no_browser: bool) -> None:
+    """Open a runbook in the browser, as the whole document, and run it there one block at a time.
+
+    RUNBOOK is a file, or the name of a book in your runbook library: ~/runbooks, or $RUNDOT_LIBRARY.
+    With no RUNBOOK, the page lists the library, and any book opens from it. Blocks run in the current
+    directory, and transcripts and resuming work as they do for rundot run, so a run stopped in one can
+    be resumed in the other. The server listens on 127.0.0.1 only, until Ctrl-C.
+    """
+    _web(runbook, port=port, browser=not no_browser)
+
+
+# The exit code when Ctrl-C stops rundot web, as for any program a signal stops.
+INTERRUPTED = 130
+
+
+def _web(runbook: Path | None, *, port: int, browser: bool) -> None:
+    """Serve runbook, or the library with none, in the browser until Ctrl-C. rundot web and run --web.
+
+    A runbook with errors is refused as rundot run refuses it, before anything listens.
+    """
+    console = Console(highlight=False)
+    parsed = None
+    if runbook is not None:
+        parsed, _, report = _validated(runbook)
+        _print_report(console, runbook, report, summary_if_ok=False)
+        if not report.ok:
+            sys.exit(1)
+    web, interrupted = _web_server(parsed, port=port)
+    console.out(f"rundot web: {web.url}")
+    console.out("Ctrl-C to stop", style="dim")
+    if browser:
+        webbrowser.open(web.url)
+    try:
+        web.serve_forever()
+    except KeyboardInterrupt:
+        # The block's command got Ctrl-C too. Its run finishes as interrupted, as under rundot run.
+        interrupted.set()
+        try:
+            web.hub.stop(timeout=threading.TIMEOUT_MAX)
+        except KeyboardInterrupt:
+            pass  # a second Ctrl-C: stop waiting for the block
+        sys.exit(INTERRUPTED)
+    finally:
+        web.close()
+
+
+def _web_server(opened: Runbook | None, *, port: int) -> tuple[WebServer, threading.Event]:
+    """rundot web's server for the runbook opened, or for the library alone, not yet serving.
+
+    Also the event to set once Ctrl-C has been pressed, so the run going finishes as interrupted.
+
+    The library is always listed at /. A runbook opened that isn't in it is listed first, under its file's name,
+    numbered if a library book already has that name, so each book has its own URL.
+    """
+    where = library.location(os.environ)
+    first: library.Book | None = None
+    name = None
+    if opened is not None:
+        listed = library.books(where)
+        name = next((book.name for book in listed if book.path.resolve() == opened.path.resolve()), None)
+        if name is None:
+            name = _unused(opened.path.stem, {book.name for book in listed})
+            first = library.Book(name, opened.path, opened.title, opened.description)
+
+    def books() -> list[library.Book]:
+        return [*([first] if first is not None else []), *library.books(where)]
+
+    interrupted = threading.Event()
+    try:
+        web = WebServer(
+            RunHub(),
+            books,
+            lambda path: _web_start_run(path, interrupted),
+            _resume_info,
+            library=where,
+            opened=name,
+            port=port,
+        )
+    except OSError as e:
+        raise click.ClickException(f"can't listen on 127.0.0.1:{port}: {e.strerror}") from e
+    return web, interrupted
+
+
+def _unused(name: str, taken: set[str]) -> str:
+    """name, or name-2, name-3 and so on, whichever is first not taken."""
+    candidate, number = name, 1
+    while candidate in taken:
+        number += 1
+        candidate = f"{name}-{number}"
+    return candidate
+
+
+# Says nothing: in the browser, the page says where a run stopped, from _resume_info.
+_QUIET = Console(quiet=True)
+
+
+def _web_start_run(path: Path, interrupted: threading.Event) -> StartRun:
+    """How the page runs the book at path: as rundot run would, with the same transcript and saved state.
+
+    resume picks up the run that stopped, as --resume does; otherwise it's forgotten, as --restart does. Anything
+    that stops the run before it starts is a RunnerError, which the page shows. Once interrupted is set, the next
+    event of the run is the last before it finishes as interrupted.
+    """
+
+    def start_run(prompter: Prompter, show: Sink, resume: bool) -> runner.RunFinished:
+        cwd = Path.cwd()
+        try:
+            parsed, backends, report = _validated(path)
+            if not report.ok:
+                found = "; ".join(f"line {error.line}: {error.message}" for error in report.errors)
+                raise runner.RunnerError(f"{path.name} can't be run: {found}")
+            saved_at = state.state_path(os.environ, path, cwd)
+            resuming, confirmed = _resuming(
+                _QUIET, parsed, path, cwd, saved_at, resume=resume, restart=not resume, ask=False
+            )
+            recording, transcript = _recording(parsed, cwd, saved_at, resuming, show)
+            stopping = [interrupted.is_set()]
+
+            def sink(event: runner.Event) -> None:
+                recording(event)
+                if interrupted.is_set() and not stopping[0] and not isinstance(event, runner.RunFinished):
+                    # Only once: a second KeyboardInterrupt in a block's output would kill it, as a second Ctrl-C.
+                    stopping[0] = True
+                    raise KeyboardInterrupt
+
+            with transcript or nullcontext():
+                return runner.run(
+                    parsed,
+                    backends,
+                    sink,
+                    prompter,
+                    cwd=cwd,
+                    block_by_block=True,
+                    start=None if resuming is None else (resuming.step, resuming.block),
+                    saved={} if resuming is None else resuming.inputs,
+                    confirmed=confirmed,
+                )
+        except (click.ClickException, TranscriptError, StateError) as e:
+            message = e.message if isinstance(e, click.ClickException) else str(e)
+            raise runner.RunnerError(message) from e
+
+    return start_run
+
+
+def _resume_info(path: Path) -> str | None:
+    """What the page's resume banner says for the book at path: where its last run stopped, and what's changed.
+
+    None if there's nothing to resume, as when rundot run wouldn't ask.
+    """
+    try:
+        parsed = parse(path)
+    except RunbookError:
+        return None
+    stopped = RunState.load(state.state_path(os.environ, path, Path.cwd()), warn=lambda warning: None)
+    if stopped is None or len(parsed.steps) < len(stopped.steps):
+        return None
+    message = _stopped_at(parsed, stopped)
+    if changes := _changes(parsed, stopped):
+        message += f" {path.name} has changed since that run: {changes}."
+    return message
 
 
 @cli.command()
