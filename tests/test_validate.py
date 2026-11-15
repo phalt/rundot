@@ -247,6 +247,7 @@ def test_validate_only_reports_the_pattern_when_it_is_broken_not_the_default_too
         ("3", "the number 3"),
         ("2026-10-14", "a date, 2026-10-14"),
         ("[main, release]", "a list"),
+        ("{name: main}", "a mapping"),
         ("", "nothing"),
     ],
 )
