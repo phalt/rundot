@@ -549,7 +549,12 @@ def test_run_overview_uses_the_file_name_when_there_is_no_title(tmp_path):
     events, _ = run(path)
 
     assert events[0] == runner.Overview(
-        title="runbook.md", steps=parse(path).steps, run_blocks=1, inputs=(), directory=tmp_path
+        title="runbook.md",
+        steps=parse(path).steps,
+        run_blocks=1,
+        inputs=(),
+        directory=tmp_path,
+        blocks=((3, "true\n"),),
     )
 
 
@@ -2097,3 +2102,119 @@ def test_run_rejects_confirmed_when_start_is_not_a_confirm(tmp_path):
 
     with pytest.raises(runner.RunnerError, match="isn't a confirm"):
         run(path, start=(0, 1), confirmed=True)
+
+
+def test_run_overview_has_every_block_filled_in_with_plain_inputs(tmp_path, monkeypatch):
+    """The overview carries each shown block's text with plain inputs filled in, so a page can show them all
+    at Start. Secrets stay as written, and one whose value is written in the runbook is masked."""
+    monkeypatch.setenv("VERSION", "1.2.0")
+    monkeypatch.setenv("TOKEN", "s3cret")
+    path = write_runbook(
+        tmp_path,
+        INPUTS_FRONTMATTER
+        + textwrap.dedent(
+            """\
+
+            ## First
+
+            ```docstring
+            Releasing <VERSION>.
+            ```
+
+            ## Second
+
+            ```confirm
+            Set <VERSION> with <TOKEN>, not s3cret.
+            ```
+
+            ```input
+            name: PR
+            description: The pull request number
+            ```
+
+            ```sh run
+            echo "<VERSION> <PR> <OTHER>"
+            ```
+            """
+        ),
+    )
+
+    events, _ = run(path, FakePrompter(answers=["42"]))
+
+    overview = events[0]
+    assert isinstance(overview, runner.Overview)
+    assert overview.blocks == (
+        (13, "Releasing 1.2.0.\n"),
+        (19, "Set 1.2.0 with <TOKEN>, not ****.\n"),
+        (28, 'echo "1.2.0 <PR> <OTHER>"\n'),
+    )
+
+
+def test_dry_run_overview_has_every_block_filled_in(tmp_path, monkeypatch):
+    """Under dry, plain inputs are filled in the same, and input blocks, never collected, stay as written."""
+    monkeypatch.delenv("PR", raising=False)
+    path = write_runbook(tmp_path, PR_RUNBOOK)
+
+    events, _ = run(path, dry=True)
+
+    overview = events[0]
+    assert isinstance(overview, runner.Overview)
+    assert overview.blocks == (
+        (3, 'echo "build"\n'),
+        (9, "Open a pull request on GitHub.\n"),
+        (19, 'echo "PR <PR> is $PR"\n'),
+        (25, "Merged PR <PR>.\n"),
+    )
+
+
+def test_run_sends_every_later_block_filled_in_with_an_input_blocks_value(tmp_path, monkeypatch):
+    """Once an input block's plain value is given, InputCollected carries every later block filled in with it."""
+    monkeypatch.delenv("PR", raising=False)
+    path = write_runbook(tmp_path, PR_RUNBOOK)
+
+    events, _ = run(path, FakePrompter(answers=["42"]))
+
+    [collected] = [event for event in events if isinstance(event, runner.InputCollected)]
+    assert collected.blocks == ((19, 'echo "PR 42 is $PR"\n'), (25, "Merged PR 42.\n"))
+
+
+def test_run_never_fills_later_blocks_with_a_secret_input_blocks_value(tmp_path, monkeypatch):
+    """A secret input block leaves later blocks as they were, so InputCollected carries none, and none of its
+    value."""
+    monkeypatch.delenv("PIN", raising=False)
+    path = write_runbook(
+        tmp_path,
+        textwrap.dedent(
+            """\
+            ## Only
+
+            ```input
+            name: PIN
+            description: A pin
+            secret: true
+            ```
+
+            ```docstring
+            Using <PIN>.
+            ```
+            """
+        ),
+    )
+
+    events, _ = run(path, FakePrompter(answers=["s3cret-pin"]))
+
+    [collected] = [event for event in events if isinstance(event, runner.InputCollected)]
+    assert collected.blocks == ()
+    assert "s3cret-pin" not in repr(events)
+
+
+def test_resumed_run_overview_fills_in_input_blocks_before_start(tmp_path, resume_env):
+    """A resumed run's overview fills every block with the values of input blocks before start, too."""
+    path = write_runbook(tmp_path, RESUME_RUNBOOK)
+
+    events, _ = run(path, start=(2, 0), saved={"VERSION": "3", "PR": "7"})
+
+    overview = events[0]
+    assert isinstance(overview, runner.Overview)
+    assert dict(overview.blocks)[max(dict(overview.blocks))] == 'echo "third 3 $PR"\n'
+    assert 'echo "second PR 7"\n' in dict(overview.blocks).values()

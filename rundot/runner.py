@@ -22,6 +22,7 @@ class Overview:
     inputs: tuple[tuple[str, str], ...]  # (name, value) in declared order, with **** for each secret
     directory: Path  # where blocks run, so it's seen before anything starts
     resuming_at: int | None = None  # the index of the step a resumed run starts at; None for a run from the start
+    blocks: tuple[tuple[int, str], ...] = ()  # (line, text) of every block shown as text, filled in as at Start
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,7 @@ class InputCollected:
     block: Block
     name: str
     value: str  # the value given, or **** for a secret
+    blocks: tuple[tuple[int, str], ...] = ()  # (line, text) of every later block shown as text, filled in with it
 
 
 @dataclass(frozen=True)
@@ -211,7 +213,9 @@ def run(
     steps = tuple(replace(step, name=mask(step.name, secrets)) for step in runbook.steps)
     to_run = len(run_blocks) - len([block for block in skipped if block.kind == "run"])
     resuming_at = start_step if resuming else None
-    sink(Overview(mask(runbook.title or runbook.path.name, secrets), steps, to_run, shown, cwd, resuming_at))
+    title = mask(runbook.title or runbook.path.name, secrets)
+    filled = _filled(runbook, plain, secrets)
+    sink(Overview(title, steps, to_run, shown, cwd, resuming_at, filled))
     try:
         if not dry and ask_to_start and not _yes(prompter.confirm("Start? [y/N]")):
             return _finish(sink, RunFinished("aborted", 0.0))
@@ -354,9 +358,10 @@ def _step(
             env[block.input.name] = value
             if block.input.secret:
                 secrets.append(value)
+                sink(InputCollected(block, block.input.name, MASK))
             else:
                 plain[block.input.name] = value
-            sink(InputCollected(block, block.input.name, MASK if block.input.secret else value))
+                sink(InputCollected(block, block.input.name, value, _filled(runbook, plain, secrets, block.line)))
             continue
         assert block.language is not None  # always set for run blocks
         code = substitute(block.content, plain)
@@ -389,6 +394,19 @@ def _step(
         if exit_code != 0:
             return _finish(sink, RunFinished("failed", time.monotonic() - started, step, exit_code))
     return None
+
+
+def _filled(
+    runbook: Runbook, plain: Mapping[str, str], secrets: list[str], after: int = 0
+) -> tuple[tuple[int, str], ...]:
+    """(line, text) of each block after line after that's shown as text, not a field: plain inputs substituted
+    and secret values masked, as the run sends it on reaching the block."""
+    return tuple(
+        (block.line, mask(substitute(block.content, plain), secrets))
+        for step in runbook.steps
+        for block in step.blocks
+        if block.kind != "input" and block.line > after
+    )
 
 
 def code_lines(code: str) -> list[str]:
