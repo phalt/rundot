@@ -28,6 +28,10 @@ class Busy(Exception):
         self.path = path
 
 
+# The runner's questions, by the kind of control that answers each: Start, a run block's ▶, and a confirm's Done.
+_CONFIRMS = {"Start? [y/N]": "start", runner.BLOCK_QUESTION: "block", "Continue? [y/N]": "confirm"}
+
+
 class WrongAnswer(Exception):
     """An answer that isn't for the prompt being waited on, or comes when nothing is waiting."""
 
@@ -50,7 +54,9 @@ class WebPrompter:
         return self._prompt("input", {"name": input.name, "problem": problem})
 
     def confirm(self, question: str) -> str:
-        raise NotImplementedError
+        if (kind := _CONFIRMS.get(question)) is None:
+            raise ValueError(f"no control answers {question!r}")
+        return self._prompt(kind, {})
 
     def answer(self, kind: str, value: str) -> None:
         """Answer the prompt being waited on, which must be of this kind. Raises WrongAnswer otherwise."""
