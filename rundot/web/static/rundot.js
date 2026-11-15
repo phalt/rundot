@@ -46,7 +46,7 @@ function book(main) {
     const formOn = !busy && ((state.ended && !state.pending) || forForm);
     for (const el of form.elements) el.disabled = !formOn;
     for (const button of main.querySelectorAll(".rd-banners button")) button.disabled = busy || !state.ended;
-    if (!live || !current) return;
+    if (busy || !live || !current) return; // a busy tab sees the run's prompts, but only the run's own tab answers
     const enable = (selector) => current.querySelectorAll(selector).forEach((el) => (el.disabled = false));
     if (live.kind === "block") enable('[data-action="block"]');
     if (live.kind === "confirm") enable('[data-action="done"], [data-action="stop"]');
