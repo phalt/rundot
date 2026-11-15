@@ -1094,7 +1094,7 @@ def test_run_steps_through_a_runbook_with_step_in_its_frontmatter(runner, starte
     with_flag = runner.invoke(cli.cli, ["run", "--step", str(path)], input="y\ns\ny\n")
 
     assert result.exit_code == 0, result.output
-    assert result.output == with_flag.output
+    assert normalized(result.output) == normalized(with_flag.output)  # the two runs can take different times
     assert normalized(result.output) == textwrap.dedent(
         """\
         ╭─ Step frontmatter example ─╮
