@@ -103,14 +103,14 @@ Every task is done test-first, in red-green slices, and also clears the standing
 `rundot.css` holds the rundot.dev tokens from the spec. `rundot.js` handles the `EventSource`, `fetch` answers and the DOM. The fonts are woff2 Latin subsets with `OFL.txt`.
 
 **Acceptance criteria:**
-- [ ] `page.book(...)` output, for `all_features.md`, has the header link, the form with one field per frontmatter input (password for secrets, `select` for choices), and every `rd-block` with its controls
-- [ ] Everything a runbook contributes to the page is escaped or sanitised; a test feeds hostile titles, descriptions and input descriptions
-- [ ] `page.library(...)` lists every book with its title and description, and the same empty message as `rundot library`
-- [ ] The built wheel contains `rundot/web/static/**` and `OFL.txt` (a test runs `uv build` into `tmp_path`, or inspects the hatch file list)
-- [ ] No URL in the CSS, JS or templates points off the server
-- [ ] A ```` ```mermaid ```` fence draws as a diagram with Pele, themed with the `--pele-*` mapping in the spec's Diagrams table; Pele is only loaded on pages with one, and a fence it can't draw stays as code with its error
-- [ ] Pele's SVG for a flowchart, a sequence diagram and a Gantt chart is checked for `style` attributes and `<style>`; if it needs them, the CSP change goes to Paul before it's made
-- [ ] The built wheel contains `rundot/web/static/pele/` with Pele's licence and pinned version
+- [x] `page.book(...)` output, for `all_features.md`, has the header link, the form with one field per frontmatter input (password for secrets, `select` for choices), and every `rd-block` with its controls
+- [x] Everything a runbook contributes to the page is escaped or sanitised; a test feeds hostile titles, descriptions and input descriptions
+- [x] `page.library(...)` lists every book with its title and description, and the same empty message as `rundot library`
+- [x] The built wheel contains `rundot/web/static/**` and `OFL.txt` (a test runs `uv build` into `tmp_path`, or inspects the hatch file list)
+- [x] No URL in the CSS, JS or templates points off the server
+- [x] A ```` ```mermaid ```` fence draws as a diagram with Pele, themed with the `--pele-*` mapping in the spec's Diagrams table; Pele is only loaded on pages with one, and a fence it can't draw stays as code with its error
+- [x] Pele's SVG for a flowchart, a sequence diagram and a Gantt chart is checked for `style` attributes and `<style>`; if it needs them, the CSP change goes to Paul before it's made
+- [x] The built wheel contains `rundot/web/static/pele/` with Pele's licence and pinned version
 - [ ] The manual checklist in the plan passes
 
 **Files likely touched:** `rundot/web/page.py`, `rundot/web/templates/*.html`, `rundot/web/static/rundot.css`, `rundot/web/static/rundot.js`, `rundot/web/static/fonts/*`, `rundot/web/static/pele/*`, `tests/runbooks/mermaid.md`, `tests/web/test_page.py`
