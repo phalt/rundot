@@ -19,6 +19,8 @@ from rundot.web.sanitise import sanitise
 _TEMPLATES = Path(__file__).parent / "templates"
 # The hooks render_html leaves, as the sanitiser writes them.
 _BLOCK = re.compile(r'<div class="rd-block" data-kind="(?P<kind>\w+)" data-line="(?P<line>\d+)"[^>]*>.*?</div>', re.S)
+_LINKS = re.compile(r"<(?:img|a) [^>]*>")
+_URL = re.compile(r'(?P<name>src|href)="(?P<url>[^"]*)"')
 _STEP = re.compile(r'<h2 data-step="(?P<number>\d+)">(?P<name>.*?)</h2>', re.S)
 
 
@@ -38,7 +40,8 @@ def book(book: Book) -> str:
     try:
         # parse reads the file first, so a body that isn't UTF-8 is a RunbookError that says which line.
         runbook = parse(book.path)
-        document = _fill(runbook, sanitise(render_html(book.path.read_text(encoding="utf-8"))))
+        rendered = sanitise(render_html(book.path.read_text(encoding="utf-8")))
+        document = _fill(runbook, _files(book.name, rendered))
     except (RunbookError, OSError) as e:
         # The page still opens, saying why, as rundot library lists a book it can't read with the reason.
         document, inputs = f'<p class="rd-problem">{escape(str(e))}</p>', ""
@@ -48,6 +51,28 @@ def book(book: Book) -> str:
         book=escape(quote(book.name)), title=title, description=description, inputs=inputs, document=document
     )
     return _PAGE.substitute(title=title, main=main)
+
+
+def _files(name: str, document: str) -> str:
+    """Point relative image and link URLs at the book's own directory, which /book/<name>/file/ serves.
+
+    The page's URL is /book/<name>, so a browser would resolve them against /book/ otherwise. Only the sanitiser's
+    own img and a tags are looked in, since it escapes every < in text.
+    """
+    base = f"/book/{escape(quote(name))}/file/"
+
+    def url(match: re.Match[str]) -> str:
+        return f'{match["name"]}="{base}{match["url"]}"' if _relative(match["url"]) else match[0]
+
+    return _LINKS.sub(lambda tag: _URL.sub(url, tag[0]), document)
+
+
+def _relative(url: str) -> bool:
+    """Whether url is a path relative to the page: not a scheme, an absolute path, or only a query or fragment."""
+    if not url or url[0] in "/#?":
+        return False
+    scheme, colon, _ = url.partition(":")
+    return not colon or any(c in scheme for c in "/?#")
 
 
 def _fill(runbook: Runbook, document: str) -> str:
