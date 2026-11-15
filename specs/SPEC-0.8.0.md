@@ -62,6 +62,7 @@ The case against, to weigh:
 13. **No new runtime dependencies.** The server is the stdlib's `http.server` (`ThreadingHTTPServer`). Output streams over Server-Sent Events. The page is plain HTML with one small script.
 14. **It works offline.** The CSS, JS and fonts ship inside the package as static files, with no CDN.
 15. **`--dry`, `--no-input`, `--json` and `--step` don't apply** to `rundot web`. It's stepped by nature, it always has a person, and it isn't for agents.
+21. **`rundot run --web` does the same as `rundot web`,** so `rundot release --web` works too. Paul asked for this (2026-11-15). It's the same code path: `run --web` hands off to `web` with the same `RUNBOOK`, and with no `RUNBOOK` it opens the library index, not the terminal picker. `--port` and `--no-browser` are only on `rundot web`, to keep `run`'s flags about running. `--web` with `--dry`, `--step`, `--show-code`, `--no-input`, `--json`, `--resume` or `--restart` is a usage error (exit 2), like 0.7.0 decision 15: in the browser, resuming and starting over are the page's banner buttons.
 16. **It looks like rundot.dev** (see [Styles](#styles)). Paul chose this (2026-11-14).
 17. **Raw HTML renders the way GitHub renders it:** allowed tags and attributes are kept and everything else is stripped (see [Security](#security)). Paul chose this over escaping it (2026-11-14), so a book that uses `<details>` or `<img width>` looks as it does on GitHub.
 18. **The URL carries a one-time token** (see [Security](#security)). Paul chose this (2026-11-14).
@@ -162,13 +163,15 @@ The page uses rundot.dev's own `style.css` values, so it looks like the site. Th
 
 ```
 rundot web [RUNBOOK] [--port N] [--no-browser]
+rundot run [RUNBOOK] --web      # the same as rundot web [RUNBOOK]
+rundot RUNBOOK --web            # and so is this
 ```
 
 On start it prints `rundot web: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 
 ## Documentation
 
-- `docs/cli.md`: the `web` command and its flags.
+- `docs/cli.md`: the `web` command and its flags, and `run --web`.
 - `docs/index.md` and `README.md`: a short "Run it in your browser" section with a screenshot.
 - `CHANGELOG.md`: 0.8.0 entry.
 
@@ -206,6 +209,7 @@ On start it prints `rundot web: http://127.0.0.1:<port>/` and `Ctrl-C to stop`.
 - [ ] The page uses rundot.dev's colours and fonts, offline
 - [ ] The manual checklist in the plan passes
 - [ ] `rundot web` with no argument lists the library, and a book opens from it
+- [ ] `rundot run X --web` and `rundot X --web` do the same as `rundot web X`, and `--web` with any flag in decision 21 is a usage error
 - [ ] Every page has a Library link at the top, and every runbook's inputs form is at the very top
 - [ ] Works with no network access, and no new runtime dependencies
 - [ ] **Proof:** someone other than Paul runs a real runbook end to end in `rundot web` without help
