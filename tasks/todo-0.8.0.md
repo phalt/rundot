@@ -44,12 +44,12 @@ Every task is done test-first, in red-green slices, and also clears the standing
 **Description:** `rundot/web/sanitise.py`, with `sanitise(html: str) -> str`. It's a stdlib `html.parser` allowlist modelled on GitHub's: tags such as `details`, `summary`, `img`, `kbd`, `sub`, `sup`, `br`, `div` and `p` with `align`, `img` with `src`, `alt`, `width` and `height`, plus everything markdown-it emits. It also keeps `class` and `data-*` attributes on the `rd-block` hooks from task 2. Everything else is dropped. Add the `rundot.web` layer to the import-linter contracts.
 
 **Acceptance criteria:**
-- [ ] Allowed tags and attributes survive unchanged
-- [ ] `script`, `style`, `iframe`, `object`, `form` and their content are removed
-- [ ] `on*` attributes, `style` attributes and `javascript:`, `data:` and `vbscript:` URLs are removed, including mixed case and entity-encoded schemes
-- [ ] `<svg><script>`, `<img src=x onerror=…>` and unclosed tags can't produce a script
-- [ ] Text is re-escaped, so `&lt;script&gt;` in a paragraph stays text
-- [ ] `rundot.web` sits in its own layer above `transcript | state | jsonlines`, and isn't allowed click or rich
+- [x] Allowed tags and attributes survive unchanged
+- [x] `script`, `style`, `iframe`, `object`, `form` and their content are removed
+- [x] `on*` attributes, `style` attributes and `javascript:`, `data:` and `vbscript:` URLs are removed, including mixed case and entity-encoded schemes
+- [x] `<svg><script>`, `<img src=x onerror=…>` and unclosed tags can't produce a script
+- [x] Text is re-escaped, so `&lt;script&gt;` in a paragraph stays text
+- [x] `rundot.web` sits in its own layer above `transcript | state | jsonlines`, and isn't allowed click or rich
 
 **Files likely touched:** `rundot/web/__init__.py`, `rundot/web/sanitise.py`, `pyproject.toml`, `tests/web/test_sanitise.py`
 
