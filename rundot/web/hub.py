@@ -28,17 +28,46 @@ class Busy(Exception):
         self.path = path
 
 
-class WebPrompter:
-    """Answers the runner's prompts with answers the page sends."""
+class WrongAnswer(Exception):
+    """An answer that isn't for the prompt being waited on, or comes when nothing is waiting."""
 
-    def __init__(self, publish: Callable[[dict[str, Any]], None]) -> None:
+
+class WebPrompter:
+    """Answers the runner's prompts with answers the page sends.
+
+    Each prompt is published as a prompt event, then the runner's thread waits until answer gives its value.
+    """
+
+    def __init__(self, publish: Callable[[str, dict[str, Any]], None]) -> None:
+        """publish sends a hub event, given its name and fields."""
         self._publish = publish
+        self._lock = threading.Lock()
+        self._waiting: str | None = None  # the kind of prompt waiting for an answer
+        self._answers: queue.Queue[str] = queue.Queue()
 
     def ask(self, input: Input, problem: str | None) -> str:
-        raise NotImplementedError
+        # Never the value: the page has the input's description, and a secret's answer must not come back.
+        return self._prompt("input", {"name": input.name, "problem": problem})
 
     def confirm(self, question: str) -> str:
         raise NotImplementedError
+
+    def answer(self, kind: str, value: str) -> None:
+        """Answer the prompt being waited on, which must be of this kind. Raises WrongAnswer otherwise."""
+        with self._lock:
+            if self._waiting is None:
+                raise WrongAnswer(f"nothing is waiting for an answer, so {kind} can't be one")
+            if self._waiting != kind:
+                raise WrongAnswer(f"waiting for an answer to {self._waiting}, not {kind}")
+            self._waiting = None
+            self._answers.put(value)
+
+    def _prompt(self, kind: str, fields: dict[str, Any]) -> str:
+        # Waiting before it's published, so a page that answers straight away isn't refused.
+        with self._lock:
+            self._waiting = kind
+        self._publish("prompt", {"kind": kind, **fields})
+        return self._answers.get()
 
 
 class RunHub:
@@ -55,6 +84,7 @@ class RunHub:
         self._steps: tuple[Step, ...] = ()
         self._thread: threading.Thread | None = None
         self._path: Path | None = None
+        self._prompter: WebPrompter | None = None
 
     @property
     def running(self) -> Path | None:
@@ -67,12 +97,13 @@ class RunHub:
 
         Raises Busy if a run is going, of this book or any other.
         """
-        prompter = WebPrompter(self._publish)
+        prompter = WebPrompter(self._hub_event)
         with self._lock:
             if (path_running := self._running()) is not None:
                 raise Busy(path_running)
             self._buffer = []
             self._path = path
+            self._prompter = prompter
             self._thread = threading.Thread(
                 target=start_run, args=(prompter, self._sink, resume), name=f"rundot run {path.name}", daemon=True
             )
@@ -86,6 +117,14 @@ class RunHub:
                 events.put(event)
             self._subscribers.append(events)
         return events
+
+    def answer(self, kind: str, value: str) -> None:
+        """Answer the prompt the run is waiting on. Raises WrongAnswer if it isn't waiting on one of this kind."""
+        with self._lock:
+            prompter = self._prompter
+        if prompter is None:
+            raise WrongAnswer(f"no run has started, so {kind} can't be an answer")
+        prompter.answer(kind, value)
 
     def wait(self, timeout: float) -> bool:
         """Wait up to timeout seconds for the run to end. Whether no run is going."""
@@ -110,6 +149,10 @@ class RunHub:
         if isinstance(event, runner.Overview):
             self._steps = event.steps
         self._publish(to_json(event, self._steps, self._clock()))
+
+    def _hub_event(self, name: str, fields: dict[str, Any]) -> None:
+        """Publish an event only the hub sends, such as prompt, shaped like to_json's."""
+        self._publish({"event": name, "at": self._clock().isoformat(timespec="milliseconds"), **fields})
 
     def _publish(self, event: dict[str, Any]) -> None:
         # Under the lock, so a subscriber that joins now gets each event exactly once: replayed or live.

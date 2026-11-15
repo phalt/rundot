@@ -161,3 +161,56 @@ def test_a_subscriber_that_joins_mid_run_gets_every_earlier_event_first_in_order
     everything = until(early, "run_finished")
     assert until(late, "run_finished") == everything
     assert [event.get("text") for event in everything if event["event"] == "output"] == ["one", "two"]
+
+
+VERSIONED = """\
+    ---
+    inputs:
+      - name: VERSION
+        description: The version
+        pattern: ^\\d+$
+    ---
+
+    ## Release
+
+    ```sh run
+    echo releasing <VERSION>
+    ```
+    """
+
+
+def test_ask_publishes_an_input_prompt_and_returns_the_answer(hub, tmp_path):
+    """The page is told which input to show, and what it sends is the input's value."""
+    path = write_runbook(tmp_path, VERSIONED)
+    events = hub.subscribe()
+    hub.start(path, starter(path, ask_to_start=False), resume=False)
+
+    prompt = until(events, "prompt")[-1]
+    hub.answer("input", "3")
+
+    assert prompt == {
+        "event": "prompt",
+        "at": AT.isoformat(timespec="milliseconds"),
+        "kind": "input",
+        "name": "VERSION",
+        "problem": None,
+    }
+    seen = until(events, "run_finished")
+    assert [event["text"] for event in seen if event["event"] == "output"] == ["releasing 3"]
+    assert seen[-1]["status"] == "ok"
+
+
+def test_a_refused_value_comes_back_as_a_second_prompt_with_the_problem(hub, tmp_path):
+    """inputs.collect checks what the page sends as it checks what's typed, and says why it refused it."""
+    path = write_runbook(tmp_path, VERSIONED)
+    events = hub.subscribe()
+    hub.start(path, starter(path, ask_to_start=False), resume=False)
+    until(events, "prompt")
+
+    hub.answer("input", "three")
+    again = until(events, "prompt")[-1]
+    hub.answer("input", "3")
+
+    assert again["name"] == "VERSION"
+    assert again["problem"] == "VERSION must match ^\\d+$"
+    assert until(events, "run_finished")[-1]["status"] == "ok"
