@@ -20,6 +20,14 @@ StartRun = Callable[[Prompter, Sink, bool], object]
 Events = queue.Queue[dict[str, Any] | None]
 
 
+class Busy(Exception):
+    """A run is already going, of the book at path. There's one run at a time per server."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(f"{path.name} is running")
+        self.path = path
+
+
 class WebPrompter:
     """Answers the runner's prompts with answers the page sends."""
 
@@ -52,12 +60,17 @@ class RunHub:
     def running(self) -> Path | None:
         """The book whose run is going, or None."""
         with self._lock:
-            return self._path if self._thread is not None and self._thread.is_alive() else None
+            return self._running()
 
     def start(self, path: Path, start_run: StartRun, resume: bool) -> None:
-        """Start a run of the book at path on a new worker thread, with start_run."""
+        """Start a run of the book at path on a new worker thread, with start_run.
+
+        Raises Busy if a run is going, of this book or any other.
+        """
         prompter = WebPrompter(self._publish)
         with self._lock:
+            if (path_running := self._running()) is not None:
+                raise Busy(path_running)
             self._buffer = []
             self._path = path
             self._thread = threading.Thread(
@@ -88,6 +101,10 @@ class RunHub:
             for events in self._subscribers:
                 events.put(None)
             self._subscribers = []
+
+    def _running(self) -> Path | None:
+        """running, for a caller that holds the lock."""
+        return self._path if self._thread is not None and self._thread.is_alive() else None
 
     def _sink(self, event: runner.Event) -> None:
         if isinstance(event, runner.Overview):

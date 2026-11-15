@@ -6,6 +6,7 @@ a timeout, so a hang fails the test instead of stalling the suite.
 
 import queue
 import textwrap
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ import pytest
 from rundot import runner
 from rundot.backends import load_backends
 from rundot.runbook import parse
-from rundot.web.hub import RunHub
+from rundot.web.hub import Busy, RunHub
 
 # Long enough for bash to start on a slow CI machine; only reached when something is wrong.
 TIMEOUT = 10
@@ -86,3 +87,41 @@ def test_a_run_sends_its_events_as_json_lines_objects(hub, tmp_path):
     assert seen[3]["text"] == "hello"
     assert seen[-1]["status"] == "ok"
     assert hub.wait(timeout=TIMEOUT)
+
+
+def held(release: threading.Event):
+    """A start_run that goes on until release is set, standing in for a run that's waiting or running a block."""
+
+    def start_run(prompter, sink, resume):
+        assert release.wait(TIMEOUT)
+
+    return start_run
+
+
+def test_a_second_start_while_a_run_is_going_is_busy_naming_the_running_book(hub, tmp_path):
+    """Only one run at a time: starting another, of any book, says which book is running and starts nothing."""
+    release = threading.Event()
+    hub.start(tmp_path / "first.md", held(release), resume=False)
+    started = []
+
+    with pytest.raises(Busy, match="first.md is running") as busy:
+        hub.start(tmp_path / "second.md", lambda *args: started.append(args), resume=False)
+
+    assert busy.value.path == tmp_path / "first.md"
+    assert hub.running == tmp_path / "first.md"
+    release.set()
+    assert hub.wait(timeout=TIMEOUT)
+    assert started == []
+
+
+def test_a_book_can_start_again_once_its_run_has_finished(hub, tmp_path):
+    """Run again: a finished run doesn't block the next, and the next starts with an empty buffer."""
+    path = write_runbook(tmp_path, HELLO)
+    hub.start(path, starter(path, ask_to_start=False), resume=False)
+    assert hub.wait(timeout=TIMEOUT)
+    assert hub.running is None
+
+    hub.start(path, starter(path, ask_to_start=False), resume=True)
+    assert hub.wait(timeout=TIMEOUT)
+
+    assert names(until(hub.subscribe(), "run_finished")).count("overview") == 1
