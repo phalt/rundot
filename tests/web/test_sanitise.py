@@ -86,3 +86,72 @@ def test_an_unclosed_dropped_tag_drops_everything_after_it():
 def test_svg_with_a_script_inside_produces_no_script():
     """The classic <svg><script> vector is dropped as a whole."""
     assert sanitise("<svg><script>alert(1)</script></svg>ok") == "ok"
+
+
+def test_allowed_attributes_survive_unchanged():
+    """Links, images, align, ol start and details open keep the attributes GitHub keeps."""
+    markup = (
+        '<p><a href="https://rundot.dev" title="Site">docs</a> '
+        '<img src="logo.png" alt="logo" title="Logo" width="20" height="10" /></p>'
+        '<div align="center"><p align="right">x</p></div><ol start="3"><li>c</li></ol>'
+        "<details open><summary>s</summary></details>"
+        '<pre><code class="language-json">{}\n</code></pre>'
+    )
+
+    assert sanitise(markup) == markup
+
+
+def test_attribute_values_are_re_escaped():
+    """A value can't break out of its quotes, however it was written."""
+    assert sanitise("<a title='a\"><script>x' href=\"&lt;&amp;\">l</a>") == (
+        '<a title="a&quot;&gt;&lt;script&gt;x" href="&lt;&amp;">l</a>'
+    )
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        '<p onclick="alert(1)">x</p>',
+        '<p ONMOUSEOVER="alert(1)">x</p>',
+        '<p style="background:url(javascript:alert(1))">x</p>',
+        '<p id="x" class="rd-block" data-kind="run" name="y" align>x</p>',
+    ],
+)
+def test_other_attributes_are_dropped(markup):
+    """on* handlers, style, and anything not on the allowlist for that tag go."""
+    assert sanitise(markup) == "<p>x</p>"
+
+
+def test_img_src_x_onerror_produces_no_handler():
+    """The classic <img src=x onerror=…> keeps its harmless src and loses its handler."""
+    assert sanitise("<img src=x onerror=alert(1)>") == '<img src="x" />'
+
+
+def test_a_repeated_attribute_keeps_the_first_as_browsers_do():
+    """A second href can't replace a checked first one."""
+    assert sanitise('<a href="/safe" href="https://x">l</a>') == '<a href="/safe">l</a>'
+
+
+def test_code_keeps_only_a_language_class():
+    """markdown-it's language-* class stays, so a mermaid fence can be drawn; other classes go."""
+    assert sanitise('<pre><code class="language-mermaid">graph TD\n</code></pre>') == (
+        '<pre><code class="language-mermaid">graph TD\n</code></pre>'
+    )
+    assert sanitise('<code class="rd-block">x</code><code class="language-a b">y</code>') == (
+        "<code>x</code><code>y</code>"
+    )
+
+
+@pytest.mark.parametrize("align", ["left", "center", "right"])
+def test_table_alignment_becomes_align(align):
+    """markdown-it aligns table cells with style; that becomes align, as GitHub writes it."""
+    assert sanitise(f'<th style="text-align:{align}">a</th><td style="text-align:{align}">1</td>') == (
+        f'<th align="{align}">a</th><td align="{align}">1</td>'
+    )
+
+
+def test_other_table_styles_are_dropped():
+    """Only markdown-it's exact alignment styles are turned into align."""
+    assert sanitise('<td style="text-align:right; color:red">1</td><td align="left">2</td>') == (
+        '<td>1</td><td align="left">2</td>'
+    )
