@@ -130,7 +130,7 @@ The page uses rundot.dev's own `style.css` values, so it looks like the site. Th
 ## Runner changes
 
 - `run()` gains `block_by_block: bool = False`. When it's set, `prompter.confirm()` is called before each run block. Any answer but y stops the run as `aborted`, the same as `--step` does per step. The web prompter answers it when ▶ is clicked.
-- `BlockStarted`, `Confirm` and `InputBlock` events carry the block's `line`, so the page can find the rendered block to update. The JSON lines output (0.7.0) gains a `line` field. This is additive.
+- `BlockStarted`, `Confirm` and `InputBlock` events carry the block's `line` (as `block.line`), so the page can find the rendered block to update. The JSON lines output already has a `line` field for them, since 0.7.0, so it doesn't change.
 - Nothing else in the Runner changes.
 
 ## Server
