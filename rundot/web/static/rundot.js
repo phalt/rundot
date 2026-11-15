@@ -61,6 +61,7 @@ function book(main) {
       summary.hidden = false;
       state.resuming = e.resuming_at !== null;
       steps.slice(0, e.resuming_at ?? 0).forEach((s) => mark(s, "✓"));
+      fill(e.blocks);
     },
     step_started(e) {
       if (state.step && !markOf(state.step)) mark(state.step, "✓");
@@ -72,6 +73,7 @@ function book(main) {
     input_collected(e) {
       const field = fieldIn(blocks.get(String(e.line)), e.name);
       if (field) field.value = e.value;
+      fill(e.blocks);
     },
     block_started(e) {
       const b = at(e.line, e.code);
@@ -128,6 +130,15 @@ function book(main) {
     resume: (e) => show("resume", e.message),
     error: (e) => show("error", e.message),
   };
+
+  // Each block's text with plain inputs filled in, by line, as the run sends it: every block at Start, and every
+  // later one again once an input block's plain value is given. The server has masked every secret in them.
+  function fill(filled = {}) {
+    for (const [line, text] of Object.entries(filled)) {
+      const b = blocks.get(line);
+      if (b && code(b)) code(b).textContent = text;
+    }
+  }
 
   function at(line, text) {
     const b = blocks.get(String(line));

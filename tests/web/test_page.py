@@ -592,3 +592,16 @@ def test_relative_images_and_links_point_at_the_books_own_files(tmp_path):
         'href="mailto:a@b.c"',
     ]:
         assert kept in markup
+
+
+def test_the_script_fills_in_every_block_from_the_overview_and_each_collected_input():
+    """The page sets each block's text from the blocks the overview and input_collected carry, so every block
+    shows its plain inputs filled in after Start, not only once the run reaches it. A browser run of
+    all_features checks the rest by hand."""
+    script = (WEB / "static" / "rundot.js").read_text()
+
+    handlers = script[script.index("const handlers = {") : script.index("function at(")]
+    overview = handlers[handlers.index("overview(e) {") : handlers.index("step_started(e)")]
+    collected = handlers[handlers.index("input_collected(e) {") : handlers.index("block_started(e)")]
+    assert "fill(e.blocks);" in overview
+    assert "fill(e.blocks);" in collected
