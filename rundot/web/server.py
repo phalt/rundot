@@ -47,13 +47,16 @@ class WebServer:
         start_run: MakeStartRun,
         resume_info: ResumeInfo,
         *,
+        library: Path,
         opened: str | None = None,
         port: int = 0,
         static: Path = STATIC,
     ) -> None:
-        """books lists the books that can be opened. With opened, / goes straight to that book."""
+        """books lists the books that can be opened, from the library at library. With opened, / goes straight to
+        that book."""
         self.hub = hub
         self.books = books
+        self.library = library
         self.start_run = start_run
         self.resume_info = resume_info
         self.opened = opened
@@ -141,7 +144,7 @@ class _Handler(BaseHTTPRequestHandler):
             case "GET", [""]:
                 if web.opened is not None:
                     return self._redirect(f"/book/{quote(web.opened)}")
-                return self._html(page.library(web.books()))
+                return self._html(page.library(web.books(), web.library, web.hub.running))
             case "GET", ["static", *rest] if rest:
                 return self._file(web.static, rest)
             case "GET", ["book", name]:
