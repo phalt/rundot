@@ -28,6 +28,13 @@ _LANGUAGE = re.compile(r"language-[^\s]+")
 # markdown-it aligns table cells with exactly this style, which GitHub writes as align.
 _TEXT_ALIGN = re.compile(r"text-align:(left|center|right)")
 
+# Attributes holding a URL, and the schemes they may use. A URL with no scheme is relative, and kept.
+_URLS = frozenset({"href", "src"})
+_SCHEMES = frozenset({"http", "https", "mailto"})
+# Browsers ignore tabs and newlines anywhere in a URL, and control characters and spaces before it.
+_IGNORED_IN_URL = re.compile(r"[\t\n\r]")
+_LEADING = re.compile(r"^[\x00-\x20]+")
+
 # Tags dropped with everything inside them, not just the tag.
 _DROP = frozenset(
     "applet embed form frame frameset iframe math noembed noframes noscript object script select style svg"
@@ -93,13 +100,27 @@ def _keep(tag: str, attrs: list[tuple[str, str | None]]) -> dict[str, str | None
         given.setdefault(name, value)
     allowed = _ATTRIBUTES.get(tag, set())
     kept = {
-        name: value for name, value in given.items() if name in allowed and (value is not None or name in _BOOLEAN)
+        name: value
+        for name, value in given.items()
+        if name in allowed and (value is not None or name in _BOOLEAN) and (name not in _URLS or _safe_url(value or ""))
     }
     if tag == "code" and _LANGUAGE.fullmatch(given.get("class") or ""):
         kept["class"] = given["class"]
     if tag in ("th", "td") and "align" not in kept and (align := _TEXT_ALIGN.fullmatch(given.get("style") or "")):
         kept["align"] = align[1]
     return kept
+
+
+def _safe_url(url: str) -> bool:
+    """Whether url is relative or uses an allowed scheme, read the way a browser reads it.
+
+    Entities are already decoded by the parser, so &#106;avascript: arrives here as javascript:.
+    """
+    url = _LEADING.sub("", _IGNORED_IN_URL.sub("", url))
+    scheme, colon, _ = url.partition(":")
+    if not colon or any(c in scheme for c in "/?#"):
+        return True
+    return scheme.lower() in _SCHEMES
 
 
 def _attribute(name: str, value: str | None) -> str:

@@ -103,7 +103,7 @@ def test_allowed_attributes_survive_unchanged():
 
 def test_attribute_values_are_re_escaped():
     """A value can't break out of its quotes, however it was written."""
-    assert sanitise("<a title='a\"><script>x' href=\"&lt;&amp;\">l</a>") == (
+    assert sanitise('<a title=\'a"><script>x\' href="&lt;&amp;">l</a>') == (
         '<a title="a&quot;&gt;&lt;script&gt;x" href="&lt;&amp;">l</a>'
     )
 
@@ -155,3 +155,51 @@ def test_other_table_styles_are_dropped():
     assert sanitise('<td style="text-align:right; color:red">1</td><td align="left">2</td>') == (
         '<td>1</td><td align="left">2</td>'
     )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://rundot.dev/x?y=1#z",
+        "http://example.com",
+        "mailto:paul@example.com",
+        "HTTPS://rundot.dev",
+        "docs/setup.md",
+        "./logo.png",
+        "../up.png",
+        "/abs/path",
+        "#section",
+        "?q=1",
+        "dir/a:b.png",
+        "",
+    ],
+)
+def test_safe_urls_are_kept(url):
+    """http, https, mailto and relative URLs stay."""
+    assert sanitise(f'<a href="{url}">l</a><img src="{url}" />') == f'<a href="{url}">l</a><img src="{url}" />'
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(1)",
+        "JaVaScRiPt:alert(1)",
+        " javascript:alert(1)",
+        "\x01javascript:alert(1)",
+        "java\tscript:alert(1)",
+        "java&#x09;script:alert(1)",
+        "java&Tab;script:alert(1)",
+        "&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;:alert(1)",
+        "&#x6A;avascript:alert(1)",
+        "javascript&colon;alert(1)",
+        "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+        "DATA:image/svg+xml,<svg onload=alert(1)>",
+        "vbscript:msgbox(1)",
+        "VbScRiPt:msgbox(1)",
+        "file:///etc/passwd",
+        "ftp://example.com",
+    ],
+)
+def test_other_url_schemes_are_dropped(url):
+    """Any scheme but http, https and mailto goes, however it's cased, spaced or entity-encoded."""
+    assert sanitise(f'<a href="{url}">l</a><img src="{url}" alt="a" />') == '<a>l</a><img alt="a" />'
