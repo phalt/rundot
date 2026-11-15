@@ -531,8 +531,8 @@ def _web_start_run(path: Path, interrupted: threading.Event) -> StartRun:
     """How the page runs the book at path: as rundot run would, with the same transcript and saved state.
 
     resume picks up the run that stopped, as --resume does; otherwise it's forgotten, as --restart does. Anything
-    that stops the run before it starts is a RunnerError, which the page shows. Once interrupted is set, the next
-    event of the run is the last before it finishes as interrupted.
+    that stops the run before it starts is a RunnerError, which the page shows. Once interrupted is set, the run
+    finishes as interrupted at its next event that isn't a block's output: the running block's end, usually.
     """
 
     def start_run(prompter: Prompter, show: Sink, resume: bool) -> runner.RunFinished:
@@ -547,13 +547,13 @@ def _web_start_run(path: Path, interrupted: threading.Event) -> StartRun:
                 _QUIET, parsed, path, cwd, saved_at, resume=resume, restart=not resume, ask=False
             )
             recording, transcript = _recording(parsed, cwd, saved_at, resuming, show)
-            stopping = [interrupted.is_set()]
 
             def sink(event: runner.Event) -> None:
                 recording(event)
-                if interrupted.is_set() and not stopping[0] and not isinstance(event, runner.RunFinished):
-                    # Only once: a second KeyboardInterrupt in a block's output would kill it, as a second Ctrl-C.
-                    stopping[0] = True
+                # Ctrl-C only raises KeyboardInterrupt in the main thread, so it's raised here, in the run's. Not
+                # in a block's output, which would lose the lines read with it and stop waiting for the block,
+                # but once it has finished, as it does under rundot run.
+                if interrupted.is_set() and not isinstance(event, runner.OutputLine | runner.RunFinished):
                     raise KeyboardInterrupt
 
             with transcript or nullcontext():
