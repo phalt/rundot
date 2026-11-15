@@ -1,5 +1,7 @@
 """Tests for the HTML sanitiser that rundot web runs over rendered runbooks."""
 
+import pytest
+
 from rundot.web.sanitise import sanitise
 
 
@@ -63,3 +65,24 @@ def test_stray_end_tags_are_dropped():
 def test_void_tags_are_written_as_markdown_it_writes_them():
     """br, hr, img and wbr have no end tag, however they're written."""
     assert sanitise("a<br>b<br/>c</br><hr><wbr>") == "a<br />b<br />c<hr /><wbr />"
+
+
+@pytest.mark.parametrize("tag", ["script", "style", "iframe", "object", "form", "svg", "math", "template", "textarea"])
+def test_dangerous_tags_are_removed_with_their_content(tag):
+    """Their content goes too, so no script, style or nested markup is left behind."""
+    assert sanitise(f"<p>a</p><{tag}><p>inside</p>alert(1)</{tag}><p>b</p>") == "<p>a</p><p>b</p>"
+
+
+def test_dropped_tags_nest():
+    """Content stays dropped until the outermost dropped tag closes."""
+    assert sanitise("<form><form>x</form>still inside</form>after") == "after"
+
+
+def test_an_unclosed_dropped_tag_drops_everything_after_it():
+    """A script that never closes can't leak its content as text."""
+    assert sanitise("<p>a</p><script>alert(1)<p>b</p>") == "<p>a</p>"
+
+
+def test_svg_with_a_script_inside_produces_no_script():
+    """The classic <svg><script> vector is dropped as a whole."""
+    assert sanitise("<svg><script>alert(1)</script></svg>ok") == "ok"
