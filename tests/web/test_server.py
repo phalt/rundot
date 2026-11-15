@@ -165,6 +165,7 @@ def serve(library, static) -> Iterator[Callable[..., Running]]:
             books or library_books,
             make_start_run,
             resume_info,
+            library=library,
             opened=opened,
             static=static,
         )
@@ -365,15 +366,26 @@ def test_the_index_lists_every_book_with_a_link_to_it(serve):
     page = body.decode()
     assert response.status == 200
     assert response.getheader("Content-Type") == "text/html; charset=utf-8"
-    assert '<a href="/book/hello">Say &lt;b&gt;hello&lt;/b&gt;</a>' in page
+    assert '<a class="rd-book-link" href="/book/hello">Say &lt;b&gt;hello&lt;/b&gt;</a>' in page
     assert "Who to say hello to" in page
-    assert '<a href="/book/other">other</a>' in page
+    assert '<a class="rd-book-link" href="/book/other">other</a>' in page
+    assert "running" not in page
 
 
-def test_an_empty_library_says_so(serve):
+def test_an_empty_library_says_so_and_where_it_is(serve, library):
     _, body = serve(books=lambda: []).request("GET", "/")
 
-    assert "no books in the library" in body.decode()
+    assert f"no books in the library at {library}" in body.decode()
+
+
+def test_the_index_marks_the_book_thats_running(serve):
+    running = serve()
+    running.post("/book/other/run", {"resume": False})
+
+    _, body = running.request("GET", "/")
+
+    assert '<a class="rd-book-link" href="/book/other">other</a>' in body.decode()
+    assert body.decode().count('<span class="rd-pill rd-running">running</span>') == 1
 
 
 def test_the_index_redirects_to_the_book_opened(serve):
@@ -389,18 +401,18 @@ def test_a_book_page_has_its_title_description_library_link_and_sanitised_body(s
     page = body.decode()
     assert response.status == 200
     assert response.getheader("Content-Type") == "text/html; charset=utf-8"
-    assert "<h1>Say &lt;b&gt;hello&lt;/b&gt;</h1>" in page
+    assert '<h1 class="rd-title">Say &lt;b&gt;hello&lt;/b&gt;</h1>' in page
     assert "Who to say hello to" in page
-    assert '<a href="/">' in page
+    assert '<a class="rd-nav" href="/">← Library</a>' in page
     assert 'class="rd-block" data-kind="run"' in page
-    assert "<script" not in page
+    assert "alert(1)" not in page
     assert "title:" not in page
 
 
 def test_a_book_with_no_title_is_headed_by_its_name(serve):
     _, body = serve().request("GET", "/book/other")
 
-    assert "<h1>other</h1>" in body.decode()
+    assert '<h1 class="rd-title">other</h1>' in body.decode()
 
 
 def test_a_book_that_cant_be_read_says_why(serve, library):
@@ -458,7 +470,7 @@ def test_a_book_name_is_url_decoded(serve, library):
     response, body = serve(books=lambda: books).request("GET", "/book/two%20words")
 
     assert response.status == 200
-    assert "<h1>two words</h1>" in body.decode()
+    assert '<h1 class="rd-title">two words</h1>' in body.decode()
 
 
 # Files

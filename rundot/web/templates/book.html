@@ -1,0 +1,15 @@
+<main class="rd-book" data-book="$book">
+<h1 class="rd-title">$title</h1>
+$description
+<div class="rd-banners">
+<div class="rd-banner rd-banner-resume" data-banner="resume" hidden><p>This book stopped part way through its last run.</p><p class="rd-banner-message" data-message></p><div class="rd-actions"><button type="button" data-action="resume">Resume</button><button type="button" data-action="restart">Start over</button></div></div>
+<div class="rd-banner rd-banner-busy" data-banner="busy" hidden><p><span data-message></span> is running. Only one book runs at a time, so this page waits until it's done.</p></div>
+<div class="rd-banner rd-banner-error" data-banner="error" hidden><p>The run couldn't start.</p><p class="rd-banner-message" data-message></p></div>
+<div class="rd-banner rd-banner-failed" data-banner="failed" hidden><p class="rd-banner-message" data-message></p><div class="rd-actions"><button type="button" data-action="resume">Retry step</button><button type="button" data-action="restart">Start over</button></div></div>
+<div class="rd-banner rd-banner-finished" data-banner="finished" hidden><p class="rd-banner-message" data-message></p><div class="rd-actions"><button type="button" data-action="restart">Run again</button></div></div>
+</div>
+$inputs
+<article class="rd-doc">
+$document
+</article>
+</main>
