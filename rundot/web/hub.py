@@ -98,20 +98,22 @@ class RunHub:
     """Owns at most one run, on a daemon worker thread, and every event it has sent so far.
 
     Events are jsonlines.to_json objects, so the page reads the same schema as --json, plus a few only the hub
-    sends: prompt, busy (another book is running, or book is None once it stops), resume, and error.
-    Each subscriber is a tab on one book, and gets only that book's run.
+    sends: prompt, busy (a run this tab can't answer is going, or book is None once it stops), resume, and error.
+    Each subscriber is a tab on one book, and gets only that book's run. Only the tab that started the run, which
+    the page names with an id it keeps across reloads, can answer it: every other tab is told it's busy.
     """
 
     def __init__(self, clock: Callable[[], datetime] = lambda: datetime.now().astimezone()) -> None:
         self._clock = clock
         self._lock = threading.Lock()
         self._buffer: list[dict[str, Any]] = []
-        self._subscribers: list[tuple[Path, Events]] = []
+        self._subscribers: list[tuple[Path, str | None, Events]] = []
         self._steps: tuple[Step, ...] = ()
         self._thread: threading.Thread | None = None
         self._active = False  # whether the run is going; cleared when it ends, before its thread does
         self._path: Path | None = None  # the book of the run that's going, or of the last one
         self._prompter: WebPrompter | None = None
+        self._tab: str | None = None  # the tab that started the run that's going, or the last one
 
     @property
     def running(self) -> Path | None:
@@ -119,8 +121,8 @@ class RunHub:
         with self._lock:
             return self._running()
 
-    def start(self, path: Path, start_run: StartRun, resume: bool) -> None:
-        """Start a run of the book at path on a new worker thread, with start_run.
+    def start(self, path: Path, start_run: StartRun, resume: bool, *, tab: str) -> None:
+        """Start a run of the book at path on a new worker thread, with start_run, answered by the tab named tab.
 
         Raises Busy if a run is going, of this book or any other.
         """
@@ -131,6 +133,7 @@ class RunHub:
             self._buffer = []
             self._path = path
             self._prompter = prompter
+            self._tab = tab
             self._active = True
             self._tell_others(path.stem)
             self._thread = threading.Thread(
@@ -138,36 +141,41 @@ class RunHub:
             )
             self._thread.start()
 
-    def subscribe(self, path: Path, resume: str | None = None) -> Events:
-        """A queue for a tab on the book at path.
+    def subscribe(self, path: Path, resume: str | None = None, tab: str | None = None) -> Events:
+        """A queue for the tab named tab on the book at path, or for a tab with no name, which can't answer.
 
-        If path's run is going, or was the last, it gets every event of that run so far, then each new one as it
-        happens. If another book is running, it gets busy naming it. Otherwise it gets resume with the message
-        given, if there is one.
+        If a run is going that this tab didn't start, it first gets busy naming the running book. If path's run
+        is going, or was the last, it gets every event of that run so far, then each new one as it happens.
+        Otherwise, with nothing running, it gets resume with the message given, if there is one.
         """
         events: Events = queue.Queue()
         with self._lock:
+            if (running := self._running()) is not None and not self._holds(path, tab):
+                events.put(self._hub_json("busy", {"book": running.stem}))
             if path == self._path:
                 for event in self._buffer:
                     events.put(event)
-            elif (running := self._running()) is not None:
-                events.put(self._hub_json("busy", {"book": running.stem}))
-            elif resume is not None:
+            elif running is None and resume is not None:
                 events.put(self._hub_json("resume", {"message": resume}))
-            self._subscribers.append((path, events))
+            self._subscribers.append((path, tab, events))
         return events
 
     def unsubscribe(self, events: Events) -> None:
         """Let go of a queue subscribe gave, once its tab has gone. Letting go of one twice does nothing."""
         with self._lock:
-            self._subscribers = [(path, each) for path, each in self._subscribers if each is not events]
+            self._subscribers = [each for each in self._subscribers if each[2] is not events]
 
-    def answer(self, kind: str, value: str) -> None:
-        """Answer the prompt the run is waiting on. Raises WrongAnswer if it isn't waiting on one of this kind."""
+    def answer(self, kind: str, value: str, *, tab: str) -> None:
+        """Answer the prompt the run is waiting on, from the tab named tab.
+
+        Raises WrongAnswer if it isn't waiting on one of this kind, or tab didn't start the run.
+        """
         with self._lock:
-            prompter = self._prompter
+            prompter, owner = self._prompter, self._tab
         if prompter is None:
             raise WrongAnswer(f"no run has started, so {kind} can't be an answer")
+        if tab != owner:
+            raise WrongAnswer("only the tab that started the run can answer it")
         prompter.answer(kind, value)
 
     def wait(self, timeout: float) -> bool:
@@ -188,7 +196,7 @@ class RunHub:
             prompter.stop()
         self.wait(timeout)
         with self._lock:
-            for _, events in self._subscribers:
+            for _, _, events in self._subscribers:
                 events.put(None)
             self._subscribers = []
 
@@ -215,11 +223,15 @@ class RunHub:
         """running, for a caller that holds the lock."""
         return self._path if self._active else None
 
+    def _holds(self, path: Path, tab: str | None) -> bool:
+        """Whether the tab named tab, on the book at path, started the run, for a caller that holds the lock."""
+        return path == self._path and tab is not None and tab == self._tab
+
     def _tell_others(self, book: str | None) -> None:
-        """Send busy to every tab on a book other than the run's, for a caller that holds the lock."""
+        """Send busy to every tab but the one that started the run, for a caller that holds the lock."""
         event = self._hub_json("busy", {"book": book})
-        for path, events in self._subscribers:
-            if path != self._path:
+        for path, tab, events in self._subscribers:
+            if not self._holds(path, tab):
                 events.put(event)
 
     def _sink(self, event: runner.Event) -> None:
@@ -239,6 +251,6 @@ class RunHub:
         # Under the lock, so a subscriber that joins now gets each event exactly once: replayed or live.
         with self._lock:
             self._buffer.append(event)
-            for path, events in self._subscribers:
+            for path, _, events in self._subscribers:
                 if path == self._path:
                     events.put(event)
