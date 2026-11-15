@@ -108,9 +108,12 @@ Every task is done test-first, in red-green slices, and also clears the standing
 - [ ] `page.library(...)` lists every book with its title and description, and the same empty message as `rundot library`
 - [ ] The built wheel contains `rundot/web/static/**` and `OFL.txt` (a test runs `uv build` into `tmp_path`, or inspects the hatch file list)
 - [ ] No URL in the CSS, JS or templates points off the server
+- [ ] A ```` ```mermaid ```` fence draws as a diagram with Pele, themed with the `--pele-*` mapping in the spec's Diagrams table; Pele is only loaded on pages with one, and a fence it can't draw stays as code with its error
+- [ ] Pele's SVG for a flowchart, a sequence diagram and a Gantt chart is checked for `style` attributes and `<style>`; if it needs them, the CSP change goes to Paul before it's made
+- [ ] The built wheel contains `rundot/web/static/pele/` with Pele's licence and pinned version
 - [ ] The manual checklist in the plan passes
 
-**Files likely touched:** `rundot/web/page.py`, `rundot/web/templates/*.html`, `rundot/web/static/rundot.css`, `rundot/web/static/rundot.js`, `rundot/web/static/fonts/*`, `tests/web/test_page.py`
+**Files likely touched:** `rundot/web/page.py`, `rundot/web/templates/*.html`, `rundot/web/static/rundot.css`, `rundot/web/static/rundot.js`, `rundot/web/static/fonts/*`, `rundot/web/static/pele/*`, `tests/runbooks/mermaid.md`, `tests/web/test_page.py`
 
 **Dependencies:** Task 5
 
@@ -142,6 +145,7 @@ Every task is done test-first, in red-green slices, and also clears the standing
 - [ ] `docs/cli.md`: `rundot web`, its flags, `run --web`, and the security notes (localhost only, the token)
 - [ ] `docs/index.md` and `README.md`: a short "Run it in your browser" section with a screenshot
 - [ ] `docs/runbook-format.md`: a note that raw HTML renders as on GitHub in `rundot web`
+- [ ] `docs/runbook-format.md` and `docs/cli.md`: mermaid fences render as diagrams in `rundot web`, with [Pele](https://pele.run) credited and linked; `rundot run` shows them as code
 - [ ] `CHANGELOG.md` and `docs/CHANGELOG.md` have a `## 0.8.0` section
 - [ ] `test_docs.py` passes with the new pages
 
