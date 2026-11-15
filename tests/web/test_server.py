@@ -881,3 +881,15 @@ def test_a_run_request_that_isnt_resume_true_or_false_is_400(serve, body):
 
     assert response.status == 400
     assert running.hub.running is None
+
+
+def test_closing_a_server_that_never_served_does_not_wait_for_it(library, static):
+    """rundot web closes its server however it stops, including before it has started serving."""
+    web = WebServer(RunHub(), lambda: [], starter, lambda path: None, library=library, static=static)
+
+    # A daemon, so if close does wait, the test fails rather than the suite hanging at exit.
+    closing = threading.Thread(target=web.close, name="rundot web test close", daemon=True)
+    closing.start()
+    closing.join(2)
+
+    assert not closing.is_alive(), "close waited for a server that never started"
