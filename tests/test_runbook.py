@@ -1,5 +1,6 @@
 """Tests for runbook parsing."""
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -859,7 +860,7 @@ def test_render_html_numbers_step_headings_in_order():
         "# Title\n\n## First\n\n### Detail\n\n```md\n## Not a step\n```\n\nSecond\n------\n\n## Third\n"
     )
 
-    assert '<h1>Title</h1>' in html
+    assert "<h1>Title</h1>" in html
     assert '<h2 data-step="1">First</h2>' in html
     assert "<h3>Detail</h3>" in html
     assert '<h2 data-step="2">Second</h2>' in html
@@ -870,7 +871,7 @@ def test_render_html_numbers_step_headings_in_order():
 def test_render_html_renders_prose_lists_links_and_images():
     """Everything between blocks renders as markdown, so the page shows the documentation half."""
     html = runbook.render_html(
-        "Read [the docs](https://rundot.dev) first.\n\n- one\n- two\n\n1. first\n\n![logo](logo.png \"Logo\")\n"
+        'Read [the docs](https://rundot.dev) first.\n\n- one\n- two\n\n1. first\n\n![logo](logo.png "Logo")\n'
     )
 
     assert html == (
@@ -895,8 +896,40 @@ def test_render_html_renders_tables():
 
 def test_render_html_passes_raw_html_through_for_the_sanitiser():
     """Raw HTML is kept as written here; rundot.web's sanitiser decides what survives."""
-    html = runbook.render_html('<details><summary>More</summary>\n\nHidden.\n\n</details>\n\n<script>alert(1)</script>\n')
+    html = runbook.render_html(
+        "<details><summary>More</summary>\n\nHidden.\n\n</details>\n\n<script>alert(1)</script>\n"
+    )
 
     assert "<details><summary>More</summary>\n" in html
     assert "<p>Hidden.</p>\n</details>\n" in html
     assert "<script>alert(1)</script>\n" in html
+
+
+def test_render_html_counts_lines_from_the_top_without_frontmatter():
+    """With no frontmatter, a fence on line 1 is data-line 1."""
+    html = runbook.render_html("```sh run\necho hi\n```\n")
+
+    assert 'data-line="1"' in html
+
+
+def test_render_html_rejects_unclosed_frontmatter():
+    """Frontmatter that never closes is the same error as for parse."""
+    with pytest.raises(runbook.RunbookError, match="frontmatter has no closing ---"):
+        runbook.render_html("---\ntitle: Release\n\n## Step\n")
+
+
+# broken-body.md isn't valid UTF-8, so it can't be a str to render; parse reports it instead.
+RENDERABLE = sorted(path for path in RUNBOOKS.rglob("*.md") if path.name != "broken-body.md")
+
+
+@pytest.mark.parametrize("path", RENDERABLE, ids=lambda path: str(path.relative_to(RUNBOOKS)))
+def test_render_html_hooks_match_parse_for_every_fixture(path):
+    """Every block parse finds has an rd-block with the same kind, line and language, and every step a number."""
+    parsed = runbook.parse(path)
+
+    html = runbook.render_html(path.read_text(encoding="utf-8"))
+
+    blocks = [*parsed.preamble, *(block for step in parsed.steps for block in step.blocks)]
+    hooks = re.findall(r'<div class="rd-block" data-kind="(\w+)" data-line="(\d+)"(?: data-lang="([^"]*)")?>', html)
+    assert hooks == [(block.kind, str(block.line), block.language or "") for block in blocks]
+    assert re.findall(r'<h2 data-step="(\d+)">', html) == [str(n) for n in range(1, len(parsed.steps) + 1)]
