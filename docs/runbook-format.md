@@ -175,6 +175,7 @@ The first word of a code block's opening line is its language. A second word of 
 | ```` ```confirm ```` | Shows the text and waits for `y`. Any other answer ends the run. |
 | ```` ```input ```` | Asks for an input. See [Input blocks](#input-blocks). |
 | ```` ```sh run ```` | Runs it. See [Run blocks](#run-blocks). |
+| ```` ```mermaid ```` | Nothing. [`rundot web`](web.md) draws it as a diagram. See [Diagrams](#diagrams). |
 | Anything else, e.g. ```` ```sh ```` | Nothing. It's documentation. |
 
 So a plain ```` ```sh ```` block shows a command without rundot running it.
@@ -235,6 +236,40 @@ python: uv run python
 #### Blocks that ask questions
 
 A block can still ask on the terminal, the way `git` and `ssh` ask for a password. But output is shown a line at a time, so a question with no newline after it isn't shown until you answer. Use [inputs](#inputs) for values instead.
+
+## In the browser
+
+[`rundot web`](web.md) shows the whole runbook, not just its blocks.
+
+### Raw HTML
+
+HTML in a runbook renders as it does on GitHub. Tags and attributes GitHub allows, such as `<details>`, `<summary>`, `<kbd>` and `<img width>`, are kept. Everything else is removed, including `<script>`, `<style>`, `<iframe>`, `<form>`, every `on…` attribute and any link that isn't `http`, `https`, `mailto` or relative.
+
+```html
+<details>
+<summary>Why this step exists</summary>
+
+The old release script skipped it, and 1.1.0 shipped without a changelog.
+
+</details>
+```
+
+Images with a relative path are served from the runbook's folder. A path that leaves it isn't served.
+
+### Diagrams
+
+A ```` ```mermaid ```` block is drawn as a diagram, as GitHub draws it, with [Pele](https://pele.run). Pele ships inside rundot, so diagrams draw offline. A diagram Pele can't draw stays as code, with its error under it.
+
+````markdown
+```mermaid
+flowchart LR
+  A[Write the runbook] --> B{Does it run?}
+  B -- yes --> C[Ship it]
+  B -- no --> D[Fix it]
+```
+````
+
+`rundot run` leaves mermaid blocks alone, like any other block it doesn't run.
 
 ## Resuming a run
 
