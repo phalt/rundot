@@ -29,11 +29,11 @@ Every task is done test-first, in red-green slices, and also clears the standing
 **Description:** `runbook.render_html(text: str) -> str` renders everything after the frontmatter with markdown-it (`html=True`, tables on). Each `run`, `docstring`, `confirm` and `input` fence becomes a `div.rd-block` with `data-kind`, `data-line` and, for run blocks, `data-lang`. Its code is in a `<pre><code>`. Other fences are plain `<pre><code>`. Step headings get `data-step="<n>"`. Raw HTML is passed through for the sanitiser.
 
 **Acceptance criteria:**
-- [ ] Every fixture in `tests/runbooks` renders; `data-line` matches `Block.line` for every block `parse` finds
-- [ ] Non-rundot fences (e.g. ```` ```json ````) have no `rd-block`
-- [ ] Prose, lists, tables, links and images render as markdown-it renders them
-- [ ] Step headings carry `data-step` in order, matching `Runbook.steps`
-- [ ] Code is HTML-escaped inside blocks
+- [x] Every fixture in `tests/runbooks` renders; `data-line` matches `Block.line` for every block `parse` finds
+- [x] Non-rundot fences (e.g. ```` ```json ````) have no `rd-block`
+- [x] Prose, lists, tables, links and images render as markdown-it renders them
+- [x] Step headings carry `data-step` in order, matching `Runbook.steps`
+- [x] Code is HTML-escaped inside blocks
 
 **Files likely touched:** `rundot/runbook.py`, `tests/test_runbook.py`
 
