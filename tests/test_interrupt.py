@@ -5,18 +5,22 @@ it's running. These tests do the same, starting rundot in its own process group 
 whole group, so nothing here fakes the signal.
 """
 
+import json
 import os
 import signal
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from pathlib import Path
 
 import pytest
 
+from rundot import state
 from rundot.backends import Interrupted, _kill_tree, stream
 from tests.output import finished, printed
+from tests.web.client import Client, drive
 
 
 def start_in_own_group(command: list[str], **kwargs) -> subprocess.Popen:
@@ -362,3 +366,67 @@ def test_killing_a_process_tree_ignores_processes_that_have_already_exited():
     finished.wait()
 
     _kill_tree(finished.pid)  # nothing to kill, and nothing raised
+
+
+def test_web_ctrl_c_during_a_block_saves_interrupted_and_exits_130(runbook, tmp_path):
+    """rundot web, started as a terminal starts it, with a run going in the page. Ctrl-C reaches the block, which
+    stops in its own way; the run is saved as interrupted, the server stops, and rundot exits 130."""
+    path = runbook(
+        """\
+        ## Slow
+
+        ```sh run
+        trap 'echo "stopping cleanly"; exit 130' INT
+        echo before
+        touch started
+        while :; do sleep 0.05; done
+        ```
+
+        ## Never reached
+
+        ```sh run
+        touch later-ran
+        ```
+        """
+    )
+    rundot = start_in_own_group(
+        [sys.executable, "-c", "from rundot.cli import cli; cli()", "web", str(path), "--no-browser"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env={**os.environ, "NO_COLOR": "1"},
+        cwd=tmp_path,
+        text=True,
+    )
+    try:
+        assert rundot.stdout is not None  # set because it's a pipe
+        printed_url = rundot.stdout.readline()
+        assert printed_url.startswith("rundot web: http://127.0.0.1:"), printed_url
+        assert rundot.stdout.readline() == "Ctrl-C to stop\n"
+        client = Client(printed_url.removeprefix("rundot web: ").strip())
+        assert client.location == "/book/runbook"
+        page: list[dict] = []
+        running = threading.Thread(
+            target=lambda: page.extend(drive(client, "runbook")), name="rundot web page", daemon=True
+        )
+        running.start()
+        wait_for(tmp_path / "started")
+
+        press_ctrl_c(rundot)
+        rest, _ = rundot.communicate(timeout=10)
+        running.join(10)
+    finally:
+        if rundot.poll() is None:
+            rundot.kill()
+            rundot.wait(10)
+
+    assert rundot.returncode == 130
+    assert not running.is_alive()
+    assert page[-1]["event"] == "run_finished" and page[-1]["status"] == "interrupted"
+    assert "Traceback" not in rest
+    assert not (tmp_path / "later-ran").exists()
+    saved = json.loads(state.state_path(os.environ, path, tmp_path).read_text())
+    assert saved["stopped"] == "interrupted"
+    assert saved["step"] == 0
+    transcript = (tmp_path / "transcript.md").read_text()
+    assert "before\nstopping cleanly\nexit 130 (" in transcript
+    assert transcript.endswith('\n--- finished: interrupted at "Slow"\n')
