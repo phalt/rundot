@@ -1,8 +1,18 @@
 """Tests for the HTML sanitiser that rundot web runs over rendered runbooks."""
 
+import re
+from pathlib import Path
+
 import pytest
 
+from rundot import runbook
 from rundot.web.sanitise import sanitise
+
+RUNBOOKS = Path(__file__).parent.parent / "runbooks"
+# broken-body.md isn't valid UTF-8, so it can't be rendered.
+RENDERABLE = sorted(path for path in RUNBOOKS.rglob("*.md") if path.name != "broken-body.md")
+HOOK = re.compile(r'<div class="rd-block" data-kind="\w+" data-line="\d+"(?: data-lang="[^"]*")?>')
+STEP = re.compile(r'<h2 data-step="\d+">')
 
 
 def test_plain_text_is_kept():
@@ -203,3 +213,51 @@ def test_safe_urls_are_kept(url):
 def test_other_url_schemes_are_dropped(url):
     """Any scheme but http, https and mailto goes, however it's cased, spaced or entity-encoded."""
     assert sanitise(f'<a href="{url}">l</a><img src="{url}" alt="a" />') == '<a>l</a><img alt="a" />'
+
+
+def test_rd_block_hooks_survive_unchanged():
+    """render_html's block hooks keep their class and data attributes, for the page to fill in."""
+    markup = (
+        '<h2 data-step="1">Step</h2>\n'
+        '<div class="rd-block" data-kind="run" data-line="7" data-lang="sh"><pre><code>echo hi\n</code></pre></div>\n'
+        '<div class="rd-block" data-kind="confirm" data-line="11"><pre><code>Done?\n</code></pre></div>\n'
+    )
+
+    assert sanitise(markup) == markup
+
+
+@pytest.mark.parametrize(
+    ("markup", "expected"),
+    [
+        ('<div class="rd-block x" data-kind="run">a</div>', "<div>a</div>"),
+        ('<div class="other" data-kind="run" data-line="1">a</div>', "<div>a</div>"),
+        (
+            '<div class="rd-block" data-other="1" data-kind="run">a</div>',
+            '<div class="rd-block" data-kind="run">a</div>',
+        ),
+        ('<p class="rd-block" data-kind="run">a</p>', "<p>a</p>"),
+        ('<h3 data-step="1">a</h3><p data-step="1">b</p>', "<h3>a</h3><p>b</p>"),
+    ],
+)
+def test_hook_attributes_are_kept_only_on_hooks(markup, expected):
+    """class and data-* are only for div.rd-block and step headings; elsewhere they go."""
+    assert sanitise(markup) == expected
+
+
+@pytest.mark.parametrize("path", RENDERABLE, ids=lambda path: str(path.relative_to(RUNBOOKS)))
+def test_every_fixture_keeps_its_hooks_and_step_numbers(path):
+    """Sanitising render_html's output leaves every rd-block hook and data-step as it was."""
+    rendered = runbook.render_html(path.read_text(encoding="utf-8"))
+
+    sanitised = sanitise(rendered)
+
+    assert HOOK.findall(sanitised) == HOOK.findall(rendered)
+    assert STEP.findall(sanitised) == STEP.findall(rendered)
+    assert sanitise(sanitised) == sanitised
+
+
+def test_the_fixtures_have_hooks_to_check():
+    """The fixture test means something: render_html finds hooks and steps in all_features.md."""
+    rendered = runbook.render_html((RUNBOOKS / "all_features.md").read_text(encoding="utf-8"))
+
+    assert HOOK.search(rendered) and STEP.search(rendered)
