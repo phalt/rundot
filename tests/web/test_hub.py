@@ -4,6 +4,7 @@ Every run is the real runner.run on a small runbook in tmp_path, with blocks rea
 a timeout, so a hang fails the test instead of stalling the suite.
 """
 
+import json
 import queue
 import textwrap
 import threading
@@ -358,3 +359,53 @@ def test_a_prompt_after_stop_interrupts_without_being_published():
     with pytest.raises(KeyboardInterrupt):
         prompter.ask(Input("NAME", "Who to greet"), None)
     assert published == []
+
+
+def test_secret_values_never_appear_in_any_published_event(hub, tmp_path):
+    """Not in prompts, not when refused, not in output, and not in the code a block runs."""
+    path = write_runbook(
+        tmp_path,
+        """\
+        ---
+        inputs:
+          - name: TOKEN
+            description: The token
+            secret: true
+            pattern: ^tok-.+
+        ---
+
+        ## Use them
+
+        ```input
+        name: PASSWORD
+        description: The password
+        secret: true
+        ```
+
+        ```sh run
+        echo "token $TOKEN"
+        echo "password $PASSWORD" >&2
+        ```
+        """,
+    )
+    events = hub.subscribe()
+    hub.start(path, starter(path, block_by_block=True), resume=False)
+
+    for kind, value in [
+        ("input", "refused-secret"),
+        ("input", "tok-first-secret"),
+        ("start", "y"),
+        ("input", "second-secret"),
+        ("block", "y"),
+    ]:
+        prompt = until(events, "prompt")[-1]
+        assert prompt["kind"] == kind, prompt
+        hub.answer(kind, value)
+    seen = until(events, "run_finished")
+    assert hub.wait(timeout=TIMEOUT)
+
+    published = json.dumps(until(hub.subscribe(), "run_finished"))
+    assert seen[-1]["status"] == "ok"
+    assert [event["text"] for event in seen if event["event"] == "output"] == ["token ****", "password ****"]
+    for value in ("refused-secret", "tok-first-secret", "second-secret"):
+        assert value not in published
