@@ -111,6 +111,7 @@ Event = (
 )
 
 STEP_QUESTION = "Run this block? [y]es / [s]kip / [q]uit"
+BLOCK_QUESTION = "Run this block? [y/N]"
 
 
 class RunnerError(Exception):
@@ -126,6 +127,7 @@ def run(
     cwd: Path,
     dry: bool = False,
     step_by_step: bool = False,
+    block_by_block: bool = False,
     start: tuple[int, int] | None = None,
     saved: Mapping[str, str] = {},
     ask_to_start: bool = True,
@@ -146,6 +148,11 @@ def run(
 
     With step_by_step, each run block's code is sent and then rundot asks whether to run it, skip it
     or quit. Quitting aborts the run. step_by_step does nothing under dry, since nothing runs.
+
+    With block_by_block, each run block's code is sent and then rundot asks whether to run it, so a front end
+    can run one block at a time. Any answer but y aborts the run there, without running the block. Docstring,
+    confirm and input blocks aren't asked about, and like step_by_step it does nothing under dry. With both
+    set, block_by_block's question comes first.
 
     Ctrl-C once the run has started finishes it as interrupted, so whatever is listening still gets a
     RunFinished. A block that was running has already stopped and had its output and exit code sent.
@@ -211,7 +218,21 @@ def run(
     except KeyboardInterrupt:
         return _finish(sink, RunFinished("interrupted", 0.0))
     return _steps(
-        runbook, backends, sink, prompter, steps, plain, secrets, env, cwd, dry, step_by_step, start, confirmed, saved
+        runbook,
+        backends,
+        sink,
+        prompter,
+        steps,
+        plain,
+        secrets,
+        env,
+        cwd,
+        dry,
+        step_by_step,
+        block_by_block,
+        start,
+        confirmed,
+        saved,
     )
 
 
@@ -235,6 +256,7 @@ def _steps(
     cwd: Path,
     dry: bool,
     step_by_step: bool,
+    block_by_block: bool,
     start: tuple[int, int],
     confirmed: bool,
     saved: Mapping[str, str],
@@ -263,6 +285,7 @@ def _steps(
                 started,
                 dry,
                 step_by_step,
+                block_by_block,
                 first,
                 confirmed_at,
                 saved,
@@ -288,6 +311,7 @@ def _step(
     started: float,
     dry: bool,
     step_by_step: bool,
+    block_by_block: bool,
     first: int,
     confirmed_at: int | None,
     saved: Mapping[str, str],
@@ -339,6 +363,8 @@ def _step(
         sink(BlockStarted(block, text))
         if dry:
             continue
+        if block_by_block and not _yes(prompter.confirm(BLOCK_QUESTION)):
+            return _finish(sink, RunFinished("aborted", time.monotonic() - started, step))
         if step_by_step:
             answer = _step_answer(prompter)
             if answer == "s":
