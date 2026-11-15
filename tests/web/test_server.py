@@ -388,9 +388,18 @@ def test_the_index_marks_the_book_thats_running(serve):
     assert body.decode().count('<span class="rd-pill rd-running">running</span>') == 1
 
 
-def test_the_index_redirects_to_the_book_opened(serve):
-    response, _ = serve(opened="hello").request("GET", "/")
+def test_the_index_is_the_library_even_with_a_book_opened(serve):
+    response, body = serve(opened="hello").request("GET", "/")
 
+    assert response.status == 200
+    assert '<a class="rd-book-link" href="/book/other">other</a>' in body.decode()
+
+
+def test_the_url_to_open_goes_straight_to_the_book_opened(serve):
+    running = serve(opened="hello")
+
+    assert running.web.url == f"http://127.0.0.1:{running.web.port}/book/hello?t={running.web.token}"
+    response, _ = running.request("GET", f"/book/hello?t={running.web.token}", cookie=False)
     assert response.status == 303
     assert response.getheader("Location") == "/book/hello"
 
@@ -457,10 +466,10 @@ def test_an_unknown_book_or_path_is_404(serve, method, path):
     assert response.status == 404
 
 
-def test_the_redirect_to_the_book_opened_is_url_encoded(serve):
-    response, _ = serve(opened="two words").request("GET", "/")
+def test_the_url_of_the_book_opened_is_url_encoded(serve):
+    running = serve(opened="two words")
 
-    assert response.getheader("Location") == "/book/two%20words"
+    assert running.web.url == f"http://127.0.0.1:{running.web.port}/book/two%20words?t={running.web.token}"
 
 
 def test_a_book_name_is_url_decoded(serve, library):
