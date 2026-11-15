@@ -273,7 +273,7 @@ A value from the environment or the stopped run that doesn't fit the input's `pa
 Prints each of the run's events as one line of JSON on stdout, as it happens, so an agent can follow a run without reading boxes. `--json` implies [`--no-input`](#-no-input), since a prompt would put text that isn't JSON on stdout.
 
 ```json
-{"event": "overview", "at": "2026-11-13T14:20:03.104+00:00", "title": "Release my-package", "directory": "/home/you/Projects/my-package", "inputs": {"VERSION": "1.2.0", "PUBLISH_TOKEN": "****"}, "steps": ["Run the tests", "Bump the version", "Tag and push", "Publish", "Announce"], "resuming_at": 3}
+{"event": "overview", "at": "2026-11-13T14:20:03.104+00:00", "title": "Release my-package", "directory": "/home/you/Projects/my-package", "inputs": {"VERSION": "1.2.0", "PUBLISH_TOKEN": "****"}, "steps": ["Run the tests", "Bump the version", "Tag and push", "Publish", "Announce"], "resuming_at": 3, "blocks": {"41": "uv publish --token \"$PUBLISH_TOKEN\"\n", "50": "Publish the GitHub release notes for v1.2.0.\n"}}
 {"event": "step_started", "at": "2026-11-13T14:20:03.106+00:00", "number": 4, "name": "Publish"}
 {"event": "block_started", "at": "2026-11-13T14:20:03.106+00:00", "line": 41, "language": "sh", "code": "uv publish --token \"$PUBLISH_TOKEN\"\n"}
 {"event": "output", "at": "2026-11-13T14:20:03.512+00:00", "text": "Uploading rundot-0.7.0.whl", "stderr": false}
@@ -289,13 +289,13 @@ Every object has `event` and `at`, when it happened, in ISO 8601 with millisecon
 
 | `event` | From | Fields besides `event` and `at` |
 |---|---|---|
-| `overview` | `Overview` | `title`, `directory`, `inputs`, `steps`, `resuming_at` (the index of the step a resumed run starts at, or `null`) |
+| `overview` | `Overview` | `title`, `directory`, `inputs`, `steps`, `resuming_at` (the index of the step a resumed run starts at, or `null`), `blocks` (each block's text by line, with plain inputs filled in as at the start) |
 | `step_started` | `StepStarted` | `number` (from 1), `name` |
 | `docstring` | `Docstring` | `line`, `text` |
 | `confirm` | `Confirm` | `line`, `text` |
 | `confirm_answered` | `ConfirmAnswered` | `line`, `yes` |
 | `input_block` | `InputBlock` | `line`, `name`, `description` |
-| `input_collected` | `InputCollected` | `line`, `name`, `value` |
+| `input_collected` | `InputCollected` | `line`, `name`, `value`, `blocks` (each later block's text by line, filled in with a plain value; empty for a secret) |
 | `block_started` | `BlockStarted` | `line`, `language`, `code` |
 | `block_skipped` | `BlockSkipped` | `line` |
 | `output` | `OutputLine` | `text`, `stderr` |

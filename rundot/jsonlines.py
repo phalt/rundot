@@ -25,6 +25,7 @@ def to_json(event: runner.Event, steps: tuple[Step, ...], at: datetime) -> dict[
                 "inputs": dict(event.inputs),
                 "steps": [step.name for step in event.steps],
                 "resuming_at": event.resuming_at,
+                "blocks": _blocks(event.blocks),
             }
         case runner.StepStarted(step=step):
             number = [s.line for s in steps].index(step.line) + 1
@@ -43,8 +44,15 @@ def to_json(event: runner.Event, steps: tuple[Step, ...], at: datetime) -> dict[
                 "name": input.name,
                 "description": input.description,
             }
-        case runner.InputCollected(block=block, name=name, value=value):
-            return {"event": "input_collected", **head, "line": block.line, "name": name, "value": value}
+        case runner.InputCollected(block=block, name=name, value=value, blocks=blocks):
+            return {
+                "event": "input_collected",
+                **head,
+                "line": block.line,
+                "name": name,
+                "value": value,
+                "blocks": _blocks(blocks),
+            }
         case runner.BlockStarted(block=block, code=code):
             return {"event": "block_started", **head, "line": block.line, "language": block.language, "code": code}
         case runner.BlockSkipped(block=block):
@@ -71,6 +79,11 @@ def to_json(event: runner.Event, steps: tuple[Step, ...], at: datetime) -> dict[
             }
         case _:
             assert_never(event)
+
+
+def _blocks(blocks: tuple[tuple[int, str], ...]) -> dict[str, str]:
+    """Blocks' filled-in text by line. JSON's keys are strings, so each line is one too."""
+    return {str(line): text for line, text in blocks}
 
 
 class JsonLines:
