@@ -563,3 +563,32 @@ def test_the_script_loads_pele_only_when_the_page_has_a_mermaid_fence():
     assert 'import("./pele/pele.js")' in loaded
     assert "if (fences.length) diagrams(fences);" in script
     assert 'document.querySelectorAll("pre > code.language-mermaid")' in script
+
+
+# Files next to the runbook
+
+
+def test_relative_images_and_links_point_at_the_books_own_files(tmp_path):
+    path = write(
+        tmp_path / "my book.md",
+        """\
+        ![logo](images/logo.png) <img src="./a b.svg" width="64">
+
+        [notes](notes.md) [top](#top) [root](/static/rundot.css) [site](https://rundot.dev/x.png) [mail](mailto:a@b.c)
+        [query](?a=1&b=2) [empty]() [colon](a/b:c)
+        """,
+    )
+
+    markup = book_page(path)
+
+    assert '<img src="/book/my%20book/file/images/logo.png" alt="logo" />' in markup
+    assert '<img src="/book/my%20book/file/./a b.svg" width="64" />' in markup
+    assert '<a href="/book/my%20book/file/notes.md">notes</a>' in markup
+    for kept in [
+        'href="?a=1&amp;b=2"',
+        'href="#top"',
+        'href="/static/rundot.css"',
+        'href="https://rundot.dev/x.png"',
+        'href="mailto:a@b.c"',
+    ]:
+        assert kept in markup
