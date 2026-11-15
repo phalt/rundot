@@ -69,6 +69,14 @@ rundot hello.md
 
 rundot asks for the inputs, shows the plan, and runs each step in order. A runbook reads like documentation and renders on GitHub, so it's still useful without rundot installed.
 
+## Run it in your browser
+
+`rundot web hello.md` opens the runbook in your browser, prose and all. Fill in the inputs, then press ▶ on each block in turn and watch its output appear under it.
+
+![hello.md part way through a run in rundot web](docs/web.png)
+
+A run stopped in the browser can be finished in the terminal, and the other way round. See [Run it in your browser](https://docs.rundot.dev/web/).
+
 ## Know it works before it runs
 
 `rundot check` catches broken frontmatter, undeclared placeholders, and shell or Python syntax errors, with line numbers.
