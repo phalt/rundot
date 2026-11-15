@@ -65,7 +65,7 @@ def parse(path: Path) -> Runbook:
     steps: list[tuple[str, int, list[Block]]] = []
     tokens = _MARKDOWN.parse(body)
     for index, token in enumerate(tokens):
-        if token.type == "heading_open" and token.tag == "h2":
+        if _starts_step(token):
             steps.append((tokens[index + 1].content, _line(token, offset), []))
         elif token.type == "fence" and (block := _block(token, offset)):
             (steps[-1][2] if steps else preamble).append(block)
@@ -90,8 +90,12 @@ def render_html(text: str) -> str:
     file = io.BytesIO(text.encode("utf-8"))
     _, _, offset = _read_frontmatter(file)
     tokens = _MARKDOWN.parse(file.read().decode("utf-8"))
+    steps = 0
     for index, token in enumerate(tokens):
-        if token.type == "fence" and (block := _block(token, offset)):
+        if _starts_step(token):
+            steps += 1
+            token.attrSet("data-step", str(steps))
+        elif token.type == "fence" and (block := _block(token, offset)):
             tokens[index] = Token("html_block", "", 0, content=_block_html(block))
     return _MARKDOWN.renderer.render(tokens, _MARKDOWN.options, {})
 
@@ -213,6 +217,11 @@ def _block(token: Token, offset: int) -> Block | None:
         case [language, "run", *_]:
             return Block(kind="run", language=language, content=token.content, line=_line(token, offset))
     return None
+
+
+def _starts_step(token: Token) -> bool:
+    """Whether a token is the heading that starts a step. parse and render_html must agree on this."""
+    return token.type == "heading_open" and token.tag == "h2"
 
 
 def _block_html(block: Block) -> str:

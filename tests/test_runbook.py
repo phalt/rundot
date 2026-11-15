@@ -842,3 +842,26 @@ def test_render_html_escapes_code_and_language_inside_blocks():
     assert 'data-lang="a&quot;&amp;&lt;b"' in html
     assert "<pre><code>&lt;/code&gt;&lt;script&gt;alert(1)&lt;/script&gt; &amp; done\n</code></pre>" in html
     assert "<script>" not in html
+
+
+def test_render_html_leaves_fences_that_are_not_rundot_blocks_as_plain_code():
+    """Documentation fences render as markdown-it renders them, with no rd-block."""
+    html = runbook.render_html('## Step\n\n```json\n{"a": 1}\n```\n\n```sh\necho hi\n```\n')
+
+    assert "rd-block" not in html
+    assert '<pre><code class="language-json">{&quot;a&quot;: 1}\n</code></pre>' in html
+    assert '<pre><code class="language-sh">echo hi\n</code></pre>' in html
+
+
+def test_render_html_numbers_step_headings_in_order():
+    """Each h2 starts a step, numbered from 1, including setext ones; deeper headings and fenced ones don't."""
+    html = runbook.render_html(
+        "# Title\n\n## First\n\n### Detail\n\n```md\n## Not a step\n```\n\nSecond\n------\n\n## Third\n"
+    )
+
+    assert '<h1>Title</h1>' in html
+    assert '<h2 data-step="1">First</h2>' in html
+    assert "<h3>Detail</h3>" in html
+    assert '<h2 data-step="2">Second</h2>' in html
+    assert '<h2 data-step="3">Third</h2>' in html
+    assert html.count("data-step") == 3
