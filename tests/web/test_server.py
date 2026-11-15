@@ -731,3 +731,132 @@ def test_a_closed_tab_lets_go_of_its_queue(serve, monkeypatch):
 
     assert let_go.wait(TIMEOUT)
 
+
+# Answers
+
+
+def test_an_answer_goes_to_the_prompt_the_run_is_waiting_on(serve):
+    running = serve()
+    running.post("/book/other/run", {"resume": False})
+    events = sse(running.open("GET", "/book/other/events"))
+    until(events, "prompt")
+
+    response, body = running.post("/book/other/answer", {"kind": "start", "value": "y"})
+
+    assert response.status == 204
+    assert body == b""
+    assert until(events, "prompt")[-1]["kind"] == "confirm"
+
+
+def test_an_answer_of_the_wrong_kind_is_409(serve):
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    until(sse(running.open("GET", "/book/hello/events")), "prompt")
+
+    response, body = running.post("/book/hello/answer", {"kind": "block", "value": "y"})
+
+    assert response.status == 409
+    assert body == b"waiting for an answer to start, not block"
+
+
+def test_an_answer_when_nothing_is_running_is_409(serve):
+    response, body = serve().post("/book/hello/answer", {"kind": "start", "value": "y"})
+
+    assert response.status == 409
+    assert body == b"hello isn't running"
+
+
+def test_an_answer_for_a_book_that_isnt_the_one_running_is_409(serve):
+    """Another book's tab can't answer the running book's prompt."""
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    until(sse(running.open("GET", "/book/hello/events")), "prompt")
+
+    response, body = running.post("/book/other/answer", {"kind": "start", "value": "y"})
+
+    assert response.status == 409
+    assert body == b"other isn't running"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "not json",
+        "",
+        "[]",
+        '"start"',
+        '{"kind": "start"}',
+        '{"value": "y"}',
+        '{"kind": 1, "value": "y"}',
+        '{"kind": "start", "value": true}',
+        b"\xff",
+    ],
+)
+def test_an_answer_that_isnt_a_kind_and_a_value_is_400(serve, body):
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+
+    response, _ = running.request("POST", "/book/hello/answer", body)
+
+    assert response.status == 400
+
+
+@pytest.mark.parametrize("length", ["many", "-1", str(64 * 1024 + 1)])
+def test_a_bad_content_length_is_400(serve, length):
+    response, _ = serve().request("POST", "/book/hello/answer", "{}", headers={"Content-Length": length})
+
+    assert response.status == 400
+
+
+# Runs
+
+
+@pytest.mark.parametrize("resume", [False, True])
+def test_run_starts_the_book_through_start_run(serve, library, resume):
+    """Start and Start over send resume false, and Resume and Retry step send true."""
+    running = serve()
+
+    response, body = running.post("/book/hello/run", {"resume": resume})
+
+    assert response.status == 204
+    assert body == b""
+    assert running.hub.running == library / "hello.md"
+    until(sse(running.open("GET", "/book/hello/events")), "prompt")
+    assert running.started == [(library / "hello.md", resume)]
+
+
+def test_run_while_another_run_is_going_is_409_naming_the_busy_book(serve, library):
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+
+    for book in ("other", "hello"):
+        response, body = running.post(f"/book/{book}/run", {"resume": False})
+        assert response.status == 409
+        assert response.getheader("Content-Type") == "application/json"
+        assert json.loads(body) == {"busy": "hello"}
+    assert running.hub.running == library / "hello.md"
+
+
+def test_a_book_can_run_again_once_its_run_has_finished(serve, library):
+    running = serve()
+    running.post("/book/hello/run", {"resume": False})
+    events = sse(running.open("GET", "/book/hello/events"))
+    until(events, "prompt")
+    running.post("/book/hello/answer", {"kind": "start", "value": "n"})
+    until(events, "run_finished")
+    assert running.hub.wait(timeout=TIMEOUT)
+
+    response, _ = running.post("/book/hello/run", {"resume": True})
+
+    assert response.status == 204
+    assert until(events, "prompt")[-1]["kind"] == "start"
+
+
+@pytest.mark.parametrize("body", ['{"resume": "yes"}', "{}", '{"resume": 1}', "nope"])
+def test_a_run_request_that_isnt_resume_true_or_false_is_400(serve, body):
+    running = serve()
+
+    response, _ = running.request("POST", "/book/hello/run", body)
+
+    assert response.status == 400
+    assert running.hub.running is None
