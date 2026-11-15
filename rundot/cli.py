@@ -1,6 +1,6 @@
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -180,26 +180,12 @@ def run_runbook(
     start, saved = (None, {}) if resuming is None else ((resuming.step, resuming.block), resuming.inputs)
     if no_input_by and (missing := _missing(parsed, start, saved)):
         raise click.ClickException(f"missing inputs: {', '.join(missing)}. Set them in the environment.")
-    recorder = None if dry else StateRecorder(saved_at, parsed, cwd, saved=saved)
-    # Nothing runs under --dry, so there's nothing to record.
-    transcript = (
-        Transcript.for_runbook(parsed, cwd, resumed_from=None if resuming is None else resuming.started_at)
-        if parsed.output_path is not None and not dry
-        else None
-    )
-
     # --step or --no-step wins; with neither, the runbook's step key decides. Nobody answers under --no-input.
     step_by_step = False if no_input_by else parsed.step if step is None else step
     printer = (
         JsonLines(lambda line: click.echo(line)) if as_json else _Printer(console, dry=dry, show_code=show_code or dry)
     )
-
-    def sink(event: runner.Event) -> None:
-        printer(event)
-        if transcript is not None:
-            transcript(event)
-        if recorder is not None:
-            recorder(event)
+    sink, transcript = _recording(parsed, cwd, saved_at, resuming, printer, dry=dry)
 
     try:
         with transcript or nullcontext():
@@ -227,6 +213,37 @@ def run_runbook(
         sys.exit(NEEDS_HUMAN_INPUT)
     if result.status not in ("ok", "dry"):
         sys.exit(1)
+
+
+def _recording(
+    runbook: Runbook,
+    cwd: Path,
+    saved_at: Path,
+    resuming: RunState | None,
+    show: Callable[[runner.Event], None],
+    *,
+    dry: bool = False,
+) -> tuple[Callable[[runner.Event], None], Transcript | None]:
+    """The sink for a run, by any front end, and the transcript it adds to, if the runbook keeps one.
+
+    It gives each event to show, then to the transcript, then to the state saved at saved_at, so the run can be
+    resumed. resuming is the stopped run this one picks up, if any. Nothing runs under dry, so nothing is recorded.
+    """
+    recorder = None if dry else StateRecorder(saved_at, runbook, cwd, saved={} if resuming is None else resuming.inputs)
+    transcript = (
+        Transcript.for_runbook(runbook, cwd, resumed_from=None if resuming is None else resuming.started_at)
+        if runbook.output_path is not None and not dry
+        else None
+    )
+
+    def sink(event: runner.Event) -> None:
+        show(event)
+        if transcript is not None:
+            transcript(event)
+        if recorder is not None:
+            recorder(event)
+
+    return sink, transcript
 
 
 NO_INPUT_VARIABLE = "RUNDOT_NO_INPUT"
