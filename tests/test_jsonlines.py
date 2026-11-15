@@ -26,7 +26,15 @@ STEPS = (BUILD, PUBLISH)
 # One example of each event, or two where a field can be empty, with the object --json prints for it.
 EXAMPLES = [
     (
-        runner.Overview("Release", STEPS, 1, (("VERSION", "1.2.0"), ("TOKEN", "****")), Path("/p"), 1),
+        runner.Overview(
+            "Release",
+            STEPS,
+            1,
+            (("VERSION", "1.2.0"), ("TOKEN", "****")),
+            Path("/p"),
+            1,
+            ((12, "Why 1.2.0.\n"), (41, "uv publish\n")),
+        ),
         {
             "event": "overview",
             "title": "Release",
@@ -34,6 +42,7 @@ EXAMPLES = [
             "inputs": {"VERSION": "1.2.0", "TOKEN": "****"},
             "steps": ["Build", "Publish"],
             "resuming_at": 1,
+            "blocks": {"12": "Why 1.2.0.\n", "41": "uv publish\n"},
         },
     ),
     (
@@ -45,6 +54,7 @@ EXAMPLES = [
             "inputs": {},
             "steps": ["Build", "Publish"],
             "resuming_at": None,
+            "blocks": {},
         },
     ),
     (runner.StepStarted(PUBLISH), {"event": "step_started", "number": 2, "name": "Publish"}),
@@ -62,8 +72,12 @@ EXAMPLES = [
         {"event": "input_block", "line": 60, "name": "PR", "description": "The pull request number"},
     ),
     (
-        runner.InputCollected(INPUT, "PR", "42"),
-        {"event": "input_collected", "line": 60, "name": "PR", "value": "42"},
+        runner.InputCollected(INPUT, "PR", "42", ((61, "Merged 42.\n"),)),
+        {"event": "input_collected", "line": 60, "name": "PR", "value": "42", "blocks": {"61": "Merged 42.\n"}},
+    ),
+    (
+        runner.InputCollected(INPUT, "PR", "****"),
+        {"event": "input_collected", "line": 60, "name": "PR", "value": "****", "blocks": {}},
     ),
     (
         runner.BlockStarted(RUN, 'uv publish --token "$PUBLISH_TOKEN"\n'),
