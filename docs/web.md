@@ -97,11 +97,11 @@ If the runbook has changed since that run, the banner says what changed, as `run
 
 ## One run at a time
 
-Only one book runs at a time. Open another book while one is running, and the page says which one is running. Its buttons wait until that run is done.
+Only one book runs at a time, and only the tab that started a run can answer it. Open another book while one is running, or the running book in a second tab, and the page says which one is running. A second tab of the running book replays the run so far and follows it live, but its buttons wait until that run is done, as another book's do.
 
 ![The busy banner](web/busy.png)
 
-Reloading the page, or opening the running book in a second tab, replays the run so far.
+Reloading the tab that started the run replays the run so far, and it carries on from there. The tab keeps its place through a reload, but not once it's closed. Then Ctrl-C in the terminal stops `rundot web` and saves the run as interrupted, and the next `rundot web` can resume it. Duplicating that tab copies its place too, so the copy can answer the run as well.
 
 ## Diagrams and HTML
 
