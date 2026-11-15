@@ -16,7 +16,7 @@ import pytest
 
 from rundot import runner
 from rundot.backends import load_backends
-from rundot.inputs import Input
+from rundot.inputs import Input, InputError
 from rundot.runbook import parse
 from rundot.web.hub import Busy, RunHub, WebPrompter, WrongAnswer
 
@@ -78,7 +78,7 @@ HELLO = """\
 def test_a_run_sends_its_events_as_json_lines_objects(hub, tmp_path):
     """The run happens on the hub's thread, and each event is what --json would print for it."""
     path = write_runbook(tmp_path, HELLO)
-    events = hub.subscribe()
+    events = hub.subscribe(path)
 
     hub.start(path, starter(path, ask_to_start=False), resume=False)
     seen = until(events, "run_finished")
@@ -126,7 +126,7 @@ def test_a_book_can_start_again_once_its_run_has_finished(hub, tmp_path):
     hub.start(path, starter(path, ask_to_start=False), resume=True)
     assert hub.wait(timeout=TIMEOUT)
 
-    assert names(until(hub.subscribe(), "run_finished")).count("overview") == 1
+    assert names(until(hub.subscribe(path), "run_finished")).count("overview") == 1
 
 
 def test_a_subscriber_that_joins_mid_run_gets_every_earlier_event_first_in_order(hub, tmp_path):
@@ -154,10 +154,10 @@ def test_a_subscriber_that_joins_mid_run_gets_every_earlier_event_first_in_order
 
         return run(prompter, sink_pausing_after_one, resume)
 
-    early = hub.subscribe()
+    early = hub.subscribe(path)
     hub.start(path, start_run, resume=False)
     assert paused.wait(TIMEOUT)
-    late = hub.subscribe()
+    late = hub.subscribe(path)
     release.set()
 
     everything = until(early, "run_finished")
@@ -184,7 +184,7 @@ VERSIONED = """\
 def test_ask_publishes_an_input_prompt_and_returns_the_answer(hub, tmp_path):
     """The page is told which input to show, and what it sends is the input's value."""
     path = write_runbook(tmp_path, VERSIONED)
-    events = hub.subscribe()
+    events = hub.subscribe(path)
     hub.start(path, starter(path, ask_to_start=False), resume=False)
 
     prompt = until(events, "prompt")[-1]
@@ -205,7 +205,7 @@ def test_ask_publishes_an_input_prompt_and_returns_the_answer(hub, tmp_path):
 def test_a_refused_value_comes_back_as_a_second_prompt_with_the_problem(hub, tmp_path):
     """inputs.collect checks what the page sends as it checks what's typed, and says why it refused it."""
     path = write_runbook(tmp_path, VERSIONED)
-    events = hub.subscribe()
+    events = hub.subscribe(path)
     hub.start(path, starter(path, ask_to_start=False), resume=False)
     until(events, "prompt")
 
@@ -234,7 +234,7 @@ CHECKED = """\
 def test_start_the_run_button_and_a_confirm_are_told_apart_by_kind(hub, tmp_path):
     """Start, ▶ and a confirm block's Done each wait for their own kind of answer, in the run's order."""
     path = write_runbook(tmp_path, CHECKED)
-    events = hub.subscribe()
+    events = hub.subscribe(path)
     hub.start(path, starter(path, block_by_block=True), resume=False)
     kinds = []
 
@@ -253,7 +253,7 @@ def test_start_the_run_button_and_a_confirm_are_told_apart_by_kind(hub, tmp_path
 def test_stop_at_a_confirm_aborts_the_run(hub, tmp_path):
     """Any answer but y is a no, as at the terminal, so Stop can send an empty answer."""
     path = write_runbook(tmp_path, CHECKED)
-    events = hub.subscribe()
+    events = hub.subscribe(path)
     hub.start(path, starter(path, ask_to_start=False), resume=False)
     until(events, "prompt")
 
@@ -267,7 +267,7 @@ def test_stop_at_a_confirm_aborts_the_run(hub, tmp_path):
 def test_an_answer_of_the_wrong_kind_is_refused_and_the_prompt_keeps_waiting(hub, tmp_path):
     """A ▶ click while Start? is waiting isn't taken as Start, and a Start isn't taken as an input's value."""
     path = write_runbook(tmp_path, VERSIONED)
-    events = hub.subscribe()
+    events = hub.subscribe(path)
     hub.start(path, starter(path), resume=False)
     until(events, "prompt")
 
@@ -331,7 +331,7 @@ INPUT_BLOCK = """\
 def test_stop_while_a_prompt_is_waiting_finishes_the_run_interrupted(hub, tmp_path, text, options, kind, step):
     """Stopping the server can't leave the run's thread waiting forever: the run ends as Ctrl-C would end it."""
     path = write_runbook(tmp_path, text)
-    events = hub.subscribe()
+    events = hub.subscribe(path)
     hub.start(path, starter(path, **options), resume=False)
     assert until(events, "prompt")[-1]["kind"] == kind
 
@@ -388,7 +388,7 @@ def test_secret_values_never_appear_in_any_published_event(hub, tmp_path):
         ```
         """,
     )
-    events = hub.subscribe()
+    events = hub.subscribe(path)
     hub.start(path, starter(path, block_by_block=True), resume=False)
 
     for kind, value in [
@@ -404,8 +404,134 @@ def test_secret_values_never_appear_in_any_published_event(hub, tmp_path):
     seen = until(events, "run_finished")
     assert hub.wait(timeout=TIMEOUT)
 
-    published = json.dumps(until(hub.subscribe(), "run_finished"))
+    published = json.dumps(until(hub.subscribe(path), "run_finished"))
     assert seen[-1]["status"] == "ok"
     assert [event["text"] for event in seen if event["event"] == "output"] == ["token ****", "password ****"]
     for value in ("refused-secret", "tok-first-secret", "second-secret"):
         assert value not in published
+
+
+def empty(events: "queue.Queue[dict[str, Any] | None]") -> bool:
+    """Whether nothing more is on events, waiting a moment for anything still on its way."""
+    try:
+        events.get(timeout=0.1)
+    except queue.Empty:
+        return True
+    return False
+
+
+def test_a_tab_on_another_book_is_told_which_book_is_busy_and_gets_none_of_its_events(hub, tmp_path):
+    """One run at a time across books: another book's tab says which one is running, until it ends."""
+    release = threading.Event()
+    running, other = tmp_path / "first.md", tmp_path / "second.md"
+    before = hub.subscribe(other)
+    hub.start(running, held(release), resume=False)
+    during = hub.subscribe(other)
+
+    assert before.get(timeout=TIMEOUT) == {
+        "event": "busy",
+        "at": AT.isoformat(timespec="milliseconds"),
+        "book": "first",
+    }
+    assert during.get(timeout=TIMEOUT)["book"] == "first"
+    release.set()
+    assert hub.wait(timeout=TIMEOUT)
+
+    for events in (before, during):
+        assert events.get(timeout=TIMEOUT) == {
+            "event": "busy",
+            "at": AT.isoformat(timespec="milliseconds"),
+            "book": None,
+        }
+        assert empty(events)
+
+
+def test_a_finished_run_is_replayed_only_to_its_own_book(hub, tmp_path):
+    """Another book's tab gets none of a run's events, live or after it has finished."""
+    path = write_runbook(tmp_path, HELLO)
+    live = hub.subscribe(tmp_path / "other.md")
+    hub.start(path, starter(path, ask_to_start=False), resume=False)
+    assert hub.wait(timeout=TIMEOUT)
+
+    assert [event["book"] for event in (live.get(timeout=TIMEOUT), live.get(timeout=TIMEOUT))] == ["runbook", None]
+    assert empty(live)
+    assert empty(hub.subscribe(tmp_path / "other.md"))
+    assert until(hub.subscribe(path), "run_finished")[-1]["status"] == "ok"
+
+
+def test_a_book_with_a_run_to_resume_is_told_so_when_nothing_is_running(hub, tmp_path):
+    """The resume banner's text comes first, and only to a tab with no run of its book to replay."""
+    path = write_runbook(tmp_path, HELLO)
+
+    events = hub.subscribe(path, resume="Stopped at step 1")
+
+    assert events.get(timeout=TIMEOUT) == {
+        "event": "resume",
+        "at": AT.isoformat(timespec="milliseconds"),
+        "message": "Stopped at step 1",
+    }
+    assert empty(events)
+    assert empty(hub.subscribe(path, resume=None))
+
+
+def test_a_book_with_a_run_to_replay_or_another_book_running_gets_no_resume_event(hub, tmp_path):
+    """A replayed run already says how it ended, and a busy server can't resume anything."""
+    path = write_runbook(tmp_path, HELLO)
+    hub.start(path, starter(path, ask_to_start=False), resume=False)
+    assert hub.wait(timeout=TIMEOUT)
+    assert names(until(hub.subscribe(path, resume="Stopped"), "run_finished"))[0] == "overview"
+
+    release = threading.Event()
+    hub.start(tmp_path / "first.md", held(release), resume=False)
+    assert hub.subscribe(path, resume="Stopped").get(timeout=TIMEOUT)["event"] == "busy"
+    release.set()
+
+
+def test_an_unsubscribed_queue_gets_nothing_more(hub, tmp_path):
+    """A closed tab's queue is let go, so it doesn't fill up with events nobody reads."""
+    path = write_runbook(tmp_path, HELLO)
+    events = hub.subscribe(path)
+
+    hub.unsubscribe(events)
+    hub.unsubscribe(events)
+    hub.start(path, starter(path, ask_to_start=False), resume=False)
+    assert hub.wait(timeout=TIMEOUT)
+    hub.stop(timeout=TIMEOUT)
+
+    assert empty(events)
+
+
+def failing(error: Exception):
+    def start_run(prompter, sink, resume):
+        raise error
+
+    return start_run
+
+
+def test_a_run_that_cant_start_sends_its_error_then_finishes_failed(hub, tmp_path):
+    """A RunnerError or InputError, which the terminal prints and exits 1 for, is shown in the page instead."""
+    path = tmp_path / "broken.md"
+    for error in (runner.RunnerError("line 3: no backend runs 'ruby' blocks"), InputError("NAME from the last run …")):
+        hub.start(path, failing(error), resume=False)
+        events = hub.subscribe(path)
+
+        seen = until(events, "run_finished")
+        assert hub.wait(timeout=TIMEOUT)
+        assert seen[0] == {"event": "error", "at": AT.isoformat(timespec="milliseconds"), "message": str(error)}
+        assert seen[1]["status"] == "failed"
+        assert len(seen) == 2
+
+
+def test_a_bug_in_a_run_is_shown_in_the_page_and_still_raised(hub, tmp_path, monkeypatch):
+    """Anything else is a bug: the page is told, and its traceback still reaches the terminal."""
+    raised = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: raised.append(args.exc_value))
+    path = tmp_path / "buggy.md"
+    events = hub.subscribe(path)
+    bug = ZeroDivisionError("division by zero")
+
+    hub.start(path, failing(bug), resume=False)
+
+    assert names(until(events, "run_finished")) == ["error", "run_finished"]
+    assert hub.wait(timeout=TIMEOUT)
+    assert raised == [bug]
