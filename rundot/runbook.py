@@ -1,3 +1,4 @@
+import io
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -81,6 +82,13 @@ def parse(path: Path) -> Runbook:
         preamble=tuple(preamble),
         steps=tuple(Step(name=name, line=line, blocks=tuple(blocks)) for name, line, blocks in steps),
     )
+
+
+def render_html(text: str) -> str:
+    """Render a runbook's body, everything after the frontmatter, as HTML."""
+    file = io.BytesIO(text.encode("utf-8"))
+    _read_frontmatter(file)
+    return _MARKDOWN.render(file.read().decode("utf-8"))
 
 
 def read_frontmatter(path: Path) -> Mapping[str, Any]:
