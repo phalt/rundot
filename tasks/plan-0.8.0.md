@@ -56,7 +56,7 @@ Run before tasks 6 and 7 are ticked, and again before release, in a desktop brow
 - [x] A confirm shows Done and Stop; Stop ends the run as aborted
 - [x] An `input` block shows its field in place, and is checked against `pattern` and `choices`
 - [x] A failing block shows Retry step and Start over; Retry reruns from the start of the step
-- [ ] Reloading mid-run replays everything so far; a second tab is read-only with the busy banner
+- [x] Reloading mid-run replays everything so far; a second tab is read-only with the busy banner
 - [x] Stop a run in the browser, then `rundot run` the same book: it offers to resume, and the other way round
 - [x] `rundot web` with no argument lists the library; a book opens; a running book shows `running`
 - [x] A runbook with `<details>`, `<img width>` and a `<script>` renders the first two and drops the third
