@@ -52,8 +52,8 @@ class WebServer:
         port: int = 0,
         static: Path = STATIC,
     ) -> None:
-        """books lists the books that can be opened, from the library at library. With opened, / goes straight to
-        that book."""
+        """books lists the books that can be opened, from the library at library. / is always their index. opened
+        names the book rundot web was given, if any, which url opens."""
         self.hub = hub
         self.books = books
         self.library = library
@@ -74,8 +74,9 @@ class WebServer:
 
     @property
     def url(self) -> str:
-        """The URL to open, with the token, which sets the cookie."""
-        return f"http://127.0.0.1:{self.port}/?t={self.token}"
+        """The URL to open: the book opened, or the index. Its token sets the cookie."""
+        path = "/" if self.opened is None else f"/book/{quote(self.opened)}"
+        return f"http://127.0.0.1:{self.port}{path}?t={self.token}"
 
     def serve_forever(self) -> None:
         self._http.serve_forever(poll_interval=POLL)
@@ -142,8 +143,6 @@ class _Handler(BaseHTTPRequestHandler):
         parts = [unquote(part) for part in url.path.split("/")[1:]]
         match method, parts:
             case "GET", [""]:
-                if web.opened is not None:
-                    return self._redirect(f"/book/{quote(web.opened)}")
                 return self._html(page.library(web.books(), web.library, web.hub.running))
             case "GET", ["static", *rest] if rest:
                 return self._file(web.static, rest)
