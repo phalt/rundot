@@ -3,7 +3,7 @@
 ## 0.8.0
 
 `rundot web` opens a runbook in your browser and runs it one block at a time, with the same inputs, secrets, transcript and saved state as `rundot run`.
-It works offline, listens on `127.0.0.1` only, and never sends a secret to the browser.
+It works offline, and listens on `127.0.0.1` only.
 
 - [Run it in your browser](https://docs.rundot.dev/web/) and [`rundot web`](https://docs.rundot.dev/cli/#rundot-web)
 - [Raw HTML and Mermaid diagrams](https://docs.rundot.dev/runbook-format/#in-the-browser) render as on GitHub

@@ -6,7 +6,9 @@
 
 **Markdown that runs.**
 
-Rundot runs the code blocks in a markdown file, one step at a time. Write a release checklist, a deploy or a setup guide once, and run it the same way every time.
+Rundot runs the code blocks in a markdown file, one step at a time. 
+
+Write a release checklist, a deploy or a setup guide once, and run it the same way every time.
 
 ![rundot checking and running hello.md](demo.svg)
 
@@ -15,7 +17,7 @@ Rundot runs the code blocks in a markdown file, one step at a time. Write a rele
 ## What people use it for
 
 - **Release checklists** - Tag, build, publish, announce. In order, every time.
-- **Incident runbooks** - The steps you need at 3am, already checked.
+- **Incident runbooks** - The reliable steps for fixing issues, automated.
 - **Dev setup** - One setup guide that works the same on every machine.
 - **Onboarding** - Guides new contributors can run, not just read.
 - **Deploys** - Ask before anything destructive happens.
@@ -71,11 +73,13 @@ rundot asks for the inputs, shows the plan, and runs each step in order. A runbo
 
 ## Run it in your browser
 
-`rundot web hello.md` opens the runbook in your browser, prose and all. Fill in the inputs, then press ▶ on each block in turn and watch its output appear under it.
+`rundot web hello.md` opens the markdown file in your browser. 
+
+Fill in the inputs, then press ▶ on each block in turn and watch its output appear under it.
 
 ![hello.md part way through a run in rundot web](web.png)
 
-A run stopped in the browser can be finished in the terminal, and the other way round. See [Run it in your browser](web.md).
+See [Run it in your browser](web.md).
 
 ## Know it works before it runs
 
