@@ -1,14 +1,5 @@
 # Change log
 
-> **paulrun is now rundot.** The project was renamed from paulrun to rundot. Nothing else changed: subcommands, flags and the runbook format all work as before. To move over:
->
-> - Install `rundot` instead of `paulrun`, and run `rundot` instead of `paulrun`.
-> - Imports start with `rundot` instead of `paulrun`, and backends register in the `rundot.backends` entry point group, which was `paulrun.backends`.
-> - `PAULRUN_LIBRARY` is now `RUNDOT_LIBRARY`, and blocks get `RUNDOT_RUNBOOK_DIR` instead of `PAULRUN_RUNBOOK_DIR`.
-> - The docs are at [docs.rundot.dev](https://docs.rundot.dev/) and the code at [github.com/phalt/rundot](https://github.com/phalt/rundot).
->
-> Entries below this note use the old name, as they were written at the time.
-
 ## 0.8.0
 
 `rundot web` opens a runbook in your browser and runs it one block at a time, with the same inputs, secrets, transcript and saved state as `rundot run`.
@@ -26,6 +17,8 @@ A run that stops part way can now be resumed at the step it stopped in.
 - [Resuming a run](https://docs.rundot.dev/cli/#resuming-a-run)
 - [`--no-input`](https://docs.rundot.dev/cli/#-no-input) and [`--json`](https://docs.rundot.dev/cli/#-json)
 - [Running from an agent or CI](https://docs.rundot.dev/cli/#running-from-an-agent-or-ci)
+
+> **paulrun was renamed rundot.** The package, command, imports, entry point group (`rundot.backends`) and environment variables (`RUNDOT_LIBRARY`, `RUNDOT_RUNBOOK_DIR`) changed name and nothing else did; entries below use the old name.
 
 ## 0.6.0
 
