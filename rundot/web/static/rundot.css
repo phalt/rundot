@@ -87,7 +87,29 @@ body {
 }
 .rd-nav:hover { color: var(--fg); border-color: var(--line-2); }
 
-main { max-width: 820px; margin: 0 auto; padding: 32px 16px 96px; }
+/* The footer stays at the foot of the window on a short page. */
+body { min-height: 100vh; display: flex; flex-direction: column; }
+main { flex: 1 0 auto; width: 100%; max-width: 820px; margin: 0 auto; padding: 32px 16px 96px; }
+
+/* The footer: quiet links to the docs and rundot.dev, in the text column. */
+.rd-page-footer {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 16px 16px 28px;
+  border-top: 1px solid var(--line);
+  font: 400 12px var(--mono);
+  color: var(--fg-3);
+}
+.rd-page-footer a {
+  color: var(--fg-3);
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 3px;
+}
+.rd-page-footer a:hover { color: var(--fg); }
 
 .rd-title { font-size: 40px; line-height: 1.1; font-weight: 600; letter-spacing: -.03em; margin: 8px 0 8px; }
 .rd-description { color: var(--fg-2); font-size: 18px; margin: 0 0 24px; }
