@@ -654,6 +654,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#in-the-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        In the browser
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="In the browser">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#raw-html" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Raw HTML
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Diagrams
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resuming-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resuming a run
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#transcript" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -699,6 +749,33 @@
     
   
   📟 Command line
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  🌐 Run it in your browser
 
     
   </span>
@@ -1012,6 +1089,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#in-the-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        In the browser
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="In the browser">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#raw-html" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Raw HTML
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Diagrams
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resuming-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resuming a run
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#transcript" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1258,6 +1385,10 @@ npm<span class="w"> </span>publish<span class="w"> </span>--otp<span class="w"> 
 <td>Runs it. See <a href="#run-blocks">Run blocks</a>.</td>
 </tr>
 <tr>
+<td><code>```mermaid</code></td>
+<td>Nothing. <a href="../web/"><code>rundot web</code></a> draws it as a diagram. See <a href="#diagrams">Diagrams</a>.</td>
+</tr>
+<tr>
 <td>Anything else, e.g. <code>```sh</code></td>
 <td>Nothing. It's documentation.</td>
 </tr>
@@ -1299,6 +1430,37 @@ rundot<span class="w"> </span>~/runbooks/update-deps.md
 <p><code>check</code> compiles each block with rundot's own Python, so syntax only a newer Python understands isn't caught.</p>
 <h4 id="blocks-that-ask-questions">Blocks that ask questions</h4>
 <p>A block can still ask on the terminal, the way <code>git</code> and <code>ssh</code> ask for a password. But output is shown a line at a time, so a question with no newline after it isn't shown until you answer. Use <a href="#inputs">inputs</a> for values instead.</p>
+<h2 id="in-the-browser">In the browser</h2>
+<p><a href="../web/"><code>rundot web</code></a> shows the whole runbook, not just its blocks.</p>
+<h3 id="raw-html">Raw HTML</h3>
+<p>HTML in a runbook renders as it does on GitHub. Tags and attributes GitHub allows, such as <code>&lt;details&gt;</code>, <code>&lt;summary&gt;</code>, <code>&lt;kbd&gt;</code> and <code>&lt;img width&gt;</code>, are kept. Everything else is removed, including <code>&lt;script&gt;</code>, <code>&lt;style&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;form&gt;</code>, every <code>on…</code> attribute and any link that isn't <code>http</code>, <code>https</code>, <code>mailto</code> or relative.</p>
+<div class="highlight"><pre><span></span><code><span class="p">&lt;</span><span class="nt">details</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">summary</span><span class="p">&gt;</span>Why this step exists<span class="p">&lt;/</span><span class="nt">summary</span><span class="p">&gt;</span>
+
+The old release script skipped it, and 1.1.0 shipped without a changelog.
+
+<span class="p">&lt;/</span><span class="nt">details</span><span class="p">&gt;</span>
+</code></pre></div>
+<p>Images with a relative path are served from the runbook's folder. A path that leaves it isn't served.</p>
+<h3 id="diagrams">Diagrams</h3>
+<p>A <code>```mermaid</code> block is drawn as a diagram, as GitHub draws it, with <a href="https://pele.run">Pele</a>. Pele ships inside rundot, so diagrams draw offline. A diagram Pele can't draw stays as code, with its error under it.</p>
+<div class="highlight"><pre><span></span><code><span class="sb">```mermaid</span>
+<span class="s">flowchart LR</span>
+<span class="s">  A[Write the runbook] --&gt; B{Does it run?}</span>
+<span class="s">  B -- yes --&gt; C[Ship it]</span>
+<span class="s">  B -- no --&gt; D[Fix it]</span>
+<span class="sb">```</span>
+</code></pre></div>
+<p><code>rundot run</code> leaves mermaid blocks alone, like any other block it doesn't run.</p>
+<h2 id="resuming-a-run">Resuming a run</h2>
+<p>A run that stops part way can be resumed at the step it stopped in, so the steps already done aren't run again. See <a href="../cli/#resuming-a-run">Resuming a run</a> for how to resume one.</p>
+<ul>
+<li><strong>Where it's kept.</strong> rundot notes where each run has got to in <code>$XDG_STATE_HOME/rundot/runs/</code>, or <code>~/.local/state/rundot/runs/</code> if that isn't set. Nothing is written to your project. A run is known by its runbook and the directory its blocks run in, so the same runbook run in two projects is resumed separately.</li>
+<li><strong>When.</strong> It's noted as each step starts, so even a run that was killed outright can be resumed. It's deleted when the run finishes ok. <code>--dry</code> never reads or writes it, and a run you decline at <code>Start?</code> leaves the last one as it was.</li>
+<li><strong>What's kept.</strong> Plain input values, from the frontmatter and from <code>input</code> blocks, are kept and used again, after the environment. Secrets are never kept: they're read from the environment or asked for again.</li>
+<li><strong>Where it resumes.</strong> At the start of the step the run stopped in, so a step is always run whole. Its <code>confirm</code> blocks are asked again. The one exception is a run stopped under <a href="../cli/#-no-input"><code>--no-input</code></a> at a <code>confirm</code> or an <code>input</code> block, which carries on at that block: the <code>confirm</code> counts as done, and the <code>input</code> is read from the environment.</li>
+<li><strong>A changed runbook.</strong> If a step that's done has changed since, or the step it resumes at has a new name, rundot warns and still offers to resume. If the runbook now has fewer steps, it starts over.</li>
+</ul>
 <h2 id="transcript">Transcript</h2>
 <p>Set <code>output_path</code>, and each run is added to the end of that file, so a failed attempt and the rerun that fixed it are both kept:</p>
 <div class="highlight"><pre><span></span><code><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">logs/release-&lt;VERSION&gt;.md</span>
@@ -1347,8 +1509,17 @@ skipped
 <td><code>--- finished: interrupted at "&lt;step&gt;"</code></td>
 <td>You pressed Ctrl-C.</td>
 </tr>
+<tr>
+<td><code>--- finished: needs human input at "&lt;step&gt;"</code></td>
+<td>Under <code>--no-input</code>, the run reached a <code>confirm</code>, or an <code>input</code> block with no value.</td>
+</tr>
 </tbody>
 </table>
+<p>A <a href="#resuming-a-run">resumed run</a> has one more line at the top, saying which step it resumed at and which run it resumed:</p>
+<div class="highlight"><pre><span></span><code>--- rundot RELEASING.md @ 2026-10-12T15:20:03+01:00
+--- resumed at "Publish to PyPI", from the run at 2026-10-12T15:11:27+01:00
+--- inputs: VERSION=1.2.0 PUBLISH_TOKEN=****
+</code></pre></div>
 <h2 id="known-limits">Known limits</h2>
 <ul>
 <li><strong>bash on macOS</strong> is version 3.2, which can't spot an unclosed heredoc (<code>cat &lt;&lt;EOF</code> with no <code>EOF</code>).</li>

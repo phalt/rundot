@@ -396,6 +396,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#run-it-in-your-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Run it in your browser
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#know-it-works-before-it-runs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -605,6 +616,33 @@
   
   
     <li class="md-nav__item">
+      <a href="./web/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  🌐 Run it in your browser
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="./library/" class="md-nav__link">
         
   
@@ -749,6 +787,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#run-it-in-your-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Run it in your browser
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#know-it-works-before-it-runs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -839,13 +888,14 @@
 <img alt="Python versions" src="https://img.shields.io/badge/python-3.12+-blue" />
 <img alt="PyPI - License" src="https://img.shields.io/pypi/l/rundot" /></p>
 <p><strong>Markdown that runs.</strong></p>
-<p>Rundot runs the code blocks in a markdown file, one step at a time. Write a release checklist, a deploy or a setup guide once, and run it the same way every time.</p>
+<p>Rundot runs the code blocks in a markdown file, one step at a time. </p>
+<p>Write a release checklist, a deploy or a setup guide once, and run it the same way every time.</p>
 <p><img alt="rundot checking and running hello.md" src="demo.svg" /></p>
 <p>🌐 <a href="https://rundot.dev">rundot.dev</a> · 🚀 <a href="install/">Install</a> · 🤖 <a href="https://rundot.dev/prompt.txt">Prompt for your LLM</a></p>
 <h2 id="what-people-use-it-for">What people use it for</h2>
 <ul>
 <li><strong>Release checklists</strong> - Tag, build, publish, announce. In order, every time.</li>
-<li><strong>Incident runbooks</strong> - The steps you need at 3am, already checked.</li>
+<li><strong>Incident runbooks</strong> - The reliable steps for fixing issues, automated.</li>
 <li><strong>Dev setup</strong> - One setup guide that works the same on every machine.</li>
 <li><strong>Onboarding</strong> - Guides new contributors can run, not just read.</li>
 <li><strong>Deploys</strong> - Ask before anything destructive happens.</li>
@@ -891,6 +941,11 @@ A runbook is just markdown. rundot runs the blocks marked <span class="sb">`run`
 rundot<span class="w"> </span>hello.md
 </code></pre></div>
 <p>rundot asks for the inputs, shows the plan, and runs each step in order. A runbook reads like documentation and renders on GitHub, so it's still useful without rundot installed.</p>
+<h2 id="run-it-in-your-browser">Run it in your browser</h2>
+<p><code>rundot web hello.md</code> opens the markdown file in your browser. </p>
+<p>Fill in the inputs, then press ▶ on each block in turn and watch its output appear under it.</p>
+<p><img alt="hello.md part way through a run in rundot web" src="web.png" /></p>
+<p>See <a href="web/">Run it in your browser</a>.</p>
 <h2 id="know-it-works-before-it-runs">Know it works before it runs</h2>
 <p><code>rundot check</code> catches broken frontmatter, undeclared placeholders, and shell or Python syntax errors, with line numbers.</p>
 <p><code>rundot --dry hello.md</code> prints every command with its inputs filled in, and runs nothing.</p>
@@ -915,6 +970,7 @@ $ rundot rebuild-frontend
 <p>A book runs in the folder you're in, so the same one works in every project. See <a href="library/">Your runbook library</a>.</p>
 <h2 id="agents-improvise-runbooks-dont">Agents improvise. Runbooks don't.</h2>
 <p>A runbook gives an agent a fixed set of steps to follow instead of working them out each time. Paste <a href="https://rundot.dev/prompt.txt">this prompt</a> into your chat, or into your <code>CLAUDE.md</code> or <code>AGENTS.md</code>. It teaches the format and asks the agent to check and dry-run every runbook before running it.</p>
+<p>An agent runs a runbook with <code>--no-input --json</code>: nothing waits for an answer, and each event is a line of JSON. When a step needs a person, such as a <code>confirm</code>, the run stops with exit code 3 and says what to do. Once it's done, the agent runs the same command again, and the run carries on from there.</p>
 <h2 id="also-in-rundot">Also in rundot</h2>
 <ul>
 <li><strong>Transcripts</strong> - Set <code>output_path</code> to keep every command, its output and how the run ended.</li>
@@ -925,6 +981,7 @@ $ rundot rebuild-frontend
 <li><a href="install/">Install rundot</a></li>
 <li><a href="runbook-format/">The runbook format</a>: everything a runbook can contain</li>
 <li><a href="cli/">The command line</a>: every command, flag and exit code</li>
+<li><a href="web/">Run it in your browser</a>: the whole runbook on one page, run a block at a time</li>
 <li><a href="library/">Your runbook library</a>: runbooks you keep for yourself, and run from anywhere</li>
 <li><a href="backends/">Backends</a>: the languages rundot runs, and adding your own</li>
 </ul>
