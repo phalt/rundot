@@ -24,7 +24,7 @@ The page stays up until you press Ctrl-C. Blocks run in the folder you started `
 
 ## The page
 
-The runbook's `title` is at the top, with its `description` under it, then a form for its [inputs](runbook-format.md#inputs). The rest of the runbook follows as it reads on GitHub.
+The runbook's `title` is at the top, with its `description` under it, then a form for its [inputs](runbook-format.md#inputs). The rest of the runbook follows as it reads on GitHub, and links to these docs and rundot.dev are at the foot of the page.
 
 ![The inputs form before Start](web/before-start.png)
 
