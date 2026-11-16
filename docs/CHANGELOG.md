@@ -11,23 +11,12 @@
 
 ## 0.8.0
 
-`rundot web` opens a runbook in your browser as the whole document, prose and all, and runs it there one block at a time. It's the same runner as `rundot run`, with the same inputs, secret masking, transcript and saved state. See [Run it in your browser](https://docs.rundot.dev/web/).
+`rundot web` opens a runbook in your browser and runs it one block at a time, with the same inputs, secrets, transcript and saved state as `rundot run`.
+It works offline, listens on `127.0.0.1` only, and never sends a secret to the browser.
 
-- `rundot web [RUNBOOK] [--port N] [--no-browser]`. With no runbook, it opens on your library. `rundot run --web`, and `rundot RUNBOOK --web`, do the same. See [`rundot web`](https://docs.rundot.dev/cli/#rundot-web).
-- The page:
-    - the inputs form is at the top, and folds into one line after **Start**, with secrets as `****`
-    - each run block has a ▶, and only the next one can be pressed. Its output shows under it, stderr in red, ending with `✓ exit 0` or `✗ exit 1` and the time
-    - a `confirm` has **Done** and **Stop**, and an `input` block is a field where it sits, checked against its `pattern` and `choices`
-    - when a run stops, **Retry step** runs the step again and **Start over** starts from the beginning. When it finishes, **Run again**
-    - a runbook whose last run stopped part way, in the browser or the terminal, shows a banner with **Resume** and **Start over**
-    - one run at a time: another book, or a second tab of the running book, shows which one is running, and waits. Only the tab that started a run can answer it, and reloading that tab replays the run so far
-    - **← Library** on every page goes to your library
-- Raw HTML in a runbook renders as on GitHub, with tags GitHub doesn't allow removed. See [In the browser](https://docs.rundot.dev/runbook-format/#in-the-browser).
-- ```` ```mermaid ```` blocks are drawn as diagrams, with [Pele](https://pele.run).
-- Fonts, styles, the script and Pele ship inside rundot, so the page works offline.
-- Security: it listens on `127.0.0.1` only, checks `Host` and `Origin`, needs the one-time token in the printed URL, and sends `Content-Security-Policy: default-src 'self'`. Secret values never reach the browser. See [Security](https://docs.rundot.dev/web/#security).
-- Ctrl-C stops `rundot web`, saves a running run as interrupted, and exits 130. `rundot run` still exits 1.
-- `--json`'s `overview` and `input_collected` events have a `blocks` field: each block's text by line, with plain inputs filled in. See [`--json`](https://docs.rundot.dev/cli/#-json).
+- [Run it in your browser](https://docs.rundot.dev/web/) and [`rundot web`](https://docs.rundot.dev/cli/#rundot-web)
+- [Raw HTML and Mermaid diagrams](https://docs.rundot.dev/runbook-format/#in-the-browser) render as on GitHub
+- [`--json`](https://docs.rundot.dev/cli/#-json) events include each block's filled-in text
 
 ## 0.7.0
 
