@@ -445,10 +445,8 @@ def test_transcript_records_stderr_lines_like_any_other(tmp_path):
     assert output.read_text().endswith("=== Both ===\n    false\nout\nerr\nexit 1 (0.1s)\n")
 
 
-def test_transcript_records_each_input_block_where_it_was_asked(tmp_path, monkeypatch):
+def test_transcript_records_each_input_block_where_it_was_asked(tmp_path):
     """An input block's value is recorded where it was given, with a secret as ****."""
-    monkeypatch.delenv("PR", raising=False)
-    monkeypatch.delenv("OTP", raising=False)
     path = write_runbook(
         tmp_path,
         """\

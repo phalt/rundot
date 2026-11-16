@@ -19,6 +19,23 @@ def started_in(tmp_path_factory, monkeypatch) -> Path:
     return directory
 
 
+# Every input name a test or test runbook uses. rundot takes an input from the environment before asking for it.
+INPUT_NAMES = (
+    "B BASE BRANCH C COLOUR D ENV ENVIRONMENT FE_SET GOOD NAME NO_DESCRIPTION OK OTP PASSWORD PICK PIN PR "
+    "PUBLISH_TOKEN TAG TOKEN UNUSED UV_PUBLISH_TOKEN V VERSION"
+).split()
+
+
+@pytest.fixture(autouse=True)
+def unset_inputs(monkeypatch) -> None:
+    """Unset every input name tests use, so a VERSION exported in the developer's shell never answers a prompt.
+
+    A test that wants an input taken from the environment sets it itself.
+    """
+    for name in INPUT_NAMES:
+        monkeypatch.delenv(name, raising=False)
+
+
 # The time every block's bracket shows in tests: 10:02:13.482.
 NOW = datetime(2026, 11, 4, 10, 2, 13, 482915, tzinfo=timezone(timedelta(hours=1)))
 

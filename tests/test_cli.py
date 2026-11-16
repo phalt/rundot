@@ -61,10 +61,8 @@ def write_runbook(tmp_path: Path, text: str) -> Path:
 
 
 @pytest.fixture
-def inputs_runbook(monkeypatch):
+def inputs_runbook():
     """The inputs example runbook, with neither of its inputs set in the environment."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("PUBLISH_TOKEN", raising=False)
     return RUNBOOKS / "inputs-example.md"
 
 
@@ -93,19 +91,15 @@ def input_block_runbook(tmp_path, monkeypatch):
     VERSION is set in the environment; PR and OTP aren't, so they're asked for at their blocks.
     """
     monkeypatch.setenv("VERSION", "1.2.0")
-    monkeypatch.delenv("PR", raising=False)
-    monkeypatch.delenv("OTP", raising=False)
     return Path(shutil.copy(RUNBOOKS / "input-block-example.md", tmp_path))
 
 
 @pytest.fixture
-def dry_runbook(tmp_path, monkeypatch):
+def dry_runbook(tmp_path):
     """A copy of the dry run example runbook in tmp_path, so a broken --dry can only write files there.
 
     Neither input is set in the environment.
     """
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("PUBLISH_TOKEN", raising=False)
     return Path(shutil.copy(RUNBOOKS / "dry-run-example.md", tmp_path))
 
 
@@ -720,7 +714,6 @@ def test_run_prompts_for_inputs_and_uses_the_answers(runner, inputs_runbook):
 def test_run_shows_an_inputs_default_and_takes_it_when_enter_is_pressed(runner, monkeypatch):
     """The prompt shows the default in brackets, and an empty answer uses it."""
     monkeypatch.setenv("VERSION", "1.2.0")
-    monkeypatch.delenv("BRANCH", raising=False)
 
     result = runner.invoke(cli.cli, ["run", str(RUNBOOKS / "default-example.md")], input="\ny\n")
 
@@ -732,7 +725,6 @@ def test_run_shows_an_inputs_default_and_takes_it_when_enter_is_pressed(runner, 
 def test_run_uses_an_answer_typed_over_the_default(runner, monkeypatch):
     """Typing an answer replaces the default."""
     monkeypatch.setenv("VERSION", "1.2.0")
-    monkeypatch.delenv("BRANCH", raising=False)
 
     result = runner.invoke(cli.cli, ["run", str(RUNBOOKS / "default-example.md")], input="release\ny\n")
 
@@ -767,9 +759,8 @@ def test_run_shows_a_default_in_an_input_block_prompt(runner, tmp_path):
     assert "merging into main" in printed(result.output)
 
 
-def test_run_lists_an_inputs_choices_and_asks_again_for_an_answer_outside_them(runner, monkeypatch):
+def test_run_lists_an_inputs_choices_and_asks_again_for_an_answer_outside_them(runner):
     """The prompt lists the choices, and an answer that isn't one gets why and the question again."""
-    monkeypatch.delenv("FE_SET", raising=False)
 
     result = runner.invoke(cli.cli, ["run", str(RUNBOOKS / "choices-example.md")], input="everything\nbilling\ny\n")
 
@@ -782,9 +773,8 @@ def test_run_lists_an_inputs_choices_and_asks_again_for_an_answer_outside_them(r
     assert "Rebuilding the billing frontend" in printed(result.output)
 
 
-def test_run_takes_a_default_that_is_one_of_the_choices(runner, monkeypatch):
+def test_run_takes_a_default_that_is_one_of_the_choices(runner):
     """Pressing enter gives the default, which is one of the choices."""
-    monkeypatch.delenv("FE_SET", raising=False)
 
     result = runner.invoke(cli.cli, ["run", str(RUNBOOKS / "choices-example.md")], input="\ny\n")
 
@@ -1627,12 +1617,11 @@ def test_inputs_colours_names_and_dims_their_details(runner, in_colour):
     assert styled(result.output, "yellow") == ["secret"]
 
 
-def test_an_inputs_prompt_dims_its_default_and_choices(runner, in_colour, monkeypatch):
+def test_an_inputs_prompt_dims_its_default_and_choices(runner, in_colour):
     """The default and choices in a prompt are dim, so the question itself is easy to read.
 
     color=True, since Click takes the colour out of a prompt that isn't going to a terminal.
     """
-    monkeypatch.delenv("FE_SET", raising=False)
 
     result = runner.invoke(cli.cli, ["run", str(RUNBOOKS / "choices-example.md")], input="\ny\n", color=True)
 
@@ -2062,7 +2051,6 @@ def resume_runbook(tmp_path, monkeypatch):
     VERSION is set in the environment for the first run; PUBLISH_TOKEN is asked for.
     """
     monkeypatch.setenv("VERSION", "1.2.0")
-    monkeypatch.delenv("PUBLISH_TOKEN", raising=False)
     return Path(shutil.copy(RUNBOOKS / "resume-example.md", tmp_path))
 
 
@@ -2411,7 +2399,6 @@ def test_a_resumed_runs_transcript_says_where_it_resumed_from(runner, resume_run
 def human_runbook(tmp_path, monkeypatch):
     """A copy of the needs human input example, with VERSION set and PR not, away from where its state is."""
     monkeypatch.setenv("VERSION", "1.2.0")
-    monkeypatch.delenv("PR", raising=False)
     monkeypatch.delenv("RUNDOT_NO_INPUT", raising=False)
     return Path(shutil.copy(RUNBOOKS / "needs-human-input-example.md", tmp_path))
 
@@ -2463,8 +2450,7 @@ def test_no_input_names_every_missing_input_and_runs_nothing(runner, resume_runb
     assert "╭─" not in result.output  # no overview: nothing has started
 
 
-def test_no_input_takes_a_default_for_a_missing_input(runner, tmp_path, monkeypatch):
-    monkeypatch.delenv("ENVIRONMENT", raising=False)
+def test_no_input_takes_a_default_for_a_missing_input(runner, tmp_path):
     path = write_runbook(
         tmp_path,
         """\
@@ -2591,9 +2577,8 @@ def test_no_input_counts_saved_values_as_present(runner, resume_runbook, started
     assert "resuming at 3/4 Publish" in result.output
 
 
-def test_no_input_names_a_secret_input_block_in_a_skipped_step(runner, tmp_path, started_in, monkeypatch):
+def test_no_input_names_a_secret_input_block_in_a_skipped_step(runner, tmp_path, started_in):
     """Secrets aren't saved, so one asked for in a step that's done must be set again for the rest of the run."""
-    monkeypatch.delenv("OTP", raising=False)
     path = write_runbook(
         tmp_path,
         """\
@@ -2720,7 +2705,7 @@ def test_json_prints_one_object_per_event_and_nothing_else_on_stdout(runner, hum
     assert all(set(event) >= {"event", "at"} for event in events)
 
 
-def test_json_sends_everything_else_to_stderr(runner, human_runbook, started_in, monkeypatch):
+def test_json_sends_everything_else_to_stderr(runner, human_runbook, started_in):
     """resuming at, the transcript path and needs human input are text on stderr, so stdout stays JSON."""
     human_runbook.write_text(human_runbook.read_text().replace("---\n\n#", "output_path: run.log\n---\n\n#", 1))
     write_state(human_runbook, started_in, stopped="needs_human_input", step=1, block=0)

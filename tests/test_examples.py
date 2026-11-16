@@ -47,9 +47,8 @@ def test_hello_is_the_readme_example():
     assert (EXAMPLES / "hello.md").read_text() == readme
 
 
-def test_hello_runs_end_to_end(runner, monkeypatch):
+def test_hello_runs_end_to_end(runner):
     """run runs hello.md's shell and Python blocks with the name it asks for."""
-    monkeypatch.delenv("NAME", raising=False)
 
     result = runner.invoke(cli.cli, ["run", str(EXAMPLES / "hello.md")], input="Paul\ny\n")
 
@@ -68,7 +67,6 @@ def test_a_dry_release_shows_every_step_for_the_version(path, runner, tmp_path, 
     """
     copy = Path(shutil.copy(path, tmp_path))
     monkeypatch.setenv("VERSION", "9.9.9")
-    monkeypatch.delenv("UV_PUBLISH_TOKEN", raising=False)
 
     result = runner.invoke(cli.cli, ["run", "--dry", str(copy)])
 

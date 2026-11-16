@@ -94,7 +94,6 @@ def test_the_readme_example_runs_as_written(runner, tmp_path, monkeypatch, witho
     [runbook] = [content for info, content in blocks if info == "markdown"]
     (tmp_path / "hello.md").write_text(runbook)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("NAME", raising=False)
     [commands] = [content for info, content in blocks if info == "sh" and content.startswith("rundot ")]
     assert commands.splitlines() == ["rundot check hello.md", "rundot hello.md"]
 

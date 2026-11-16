@@ -396,10 +396,8 @@ def test_run_rejects_block_with_no_backend_before_running_anything(tmp_path):
     assert not (tmp_path / "first-step-ran").exists()
 
 
-def test_run_gives_every_input_to_blocks_as_environment_variables(tmp_path, monkeypatch):
+def test_run_gives_every_input_to_blocks_as_environment_variables(tmp_path):
     """Plain and secret inputs alike are exported to each block's environment."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + '\n## Env\n\n```sh run\necho "$VERSION ${#TOKEN}"\n```\n')
 
     events, _ = run(path, FakePrompter(answers=["1.2.0", "s3cret"]))
@@ -407,10 +405,8 @@ def test_run_gives_every_input_to_blocks_as_environment_variables(tmp_path, monk
     assert output(events) == ["1.2.0 6"]
 
 
-def test_run_substitutes_plain_inputs_into_run_blocks_before_running_them(tmp_path, monkeypatch):
+def test_run_substitutes_plain_inputs_into_run_blocks_before_running_them(tmp_path):
     """<VERSION> is replaced in the code the backend runs, and the code event shows what ran."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + "\n## Tag\n\n```sh run\necho 'tag <VERSION>'\n```\n")
 
     events, _ = run(path, FakePrompter(answers=["1.2.0", "s3cret"]))
@@ -419,10 +415,8 @@ def test_run_substitutes_plain_inputs_into_run_blocks_before_running_them(tmp_pa
     assert output(events) == ["tag 1.2.0"]
 
 
-def test_run_never_substitutes_secrets(tmp_path, monkeypatch):
+def test_run_never_substitutes_secrets(tmp_path):
     """A secret's placeholder is left as written, so its value never ends up in the code."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + "\n## Leak\n\n```sh run\necho '<TOKEN>'\n```\n")
 
     events, _ = run(path, FakePrompter(answers=["1.2.0", "s3cret"]))
@@ -431,10 +425,8 @@ def test_run_never_substitutes_secrets(tmp_path, monkeypatch):
     assert output(events) == ["<TOKEN>"]
 
 
-def test_run_masks_secret_values_in_block_output(tmp_path, monkeypatch):
+def test_run_masks_secret_values_in_block_output(tmp_path):
     """A block that prints a secret has it replaced with ****, so its value is in no event."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + '\n## Leak\n\n```sh run\necho "token is $TOKEN"\n```\n')
 
     events, _ = run(path, FakePrompter(answers=["1.2.0", "s3cret"]))
@@ -454,10 +446,8 @@ def test_run_takes_inputs_from_the_environment_without_prompting(tmp_path, monke
     assert output(events) == ["1.2.0 ****"]
 
 
-def test_run_collects_inputs_before_the_first_step_starts(tmp_path, monkeypatch):
+def test_run_collects_inputs_before_the_first_step_starts(tmp_path):
     """Every input is asked for up front, before anything runs."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + "\n## First\n\n```sh run\ntrue\n```\n")
     events: list[runner.Event] = []
     events_when_asked: list[int] = []
@@ -475,10 +465,8 @@ def test_run_collects_inputs_before_the_first_step_starts(tmp_path, monkeypatch)
     assert events_when_asked == [0, 0]
 
 
-def test_run_does_not_ask_for_inputs_when_a_block_has_no_backend(tmp_path, monkeypatch):
+def test_run_does_not_ask_for_inputs_when_a_block_has_no_backend(tmp_path):
     """A runbook that can't run is rejected before anyone types a secret into it."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + "\n## No backend\n\n```cobol run\nDISPLAY 'HELLO'.\n```\n")
     prompter = FakePrompter(answers=["1.2.0", "s3cret"])
 
@@ -488,10 +476,8 @@ def test_run_does_not_ask_for_inputs_when_a_block_has_no_backend(tmp_path, monke
     assert prompter.asked == []
 
 
-def test_run_shows_an_overview_after_collecting_inputs_then_asks_to_start(tmp_path, monkeypatch):
+def test_run_shows_an_overview_after_collecting_inputs_then_asks_to_start(tmp_path):
     """The title, steps and number of run blocks are sent once inputs are in, and then rundot asks to start."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(
         tmp_path,
         INPUTS_FRONTMATTER
@@ -630,10 +616,8 @@ def test_run_sends_docstring_and_confirm_blocks_in_order_with_run_blocks(tmp_pat
     ]
 
 
-def test_run_substitutes_plain_inputs_into_docstring_and_confirm_text(tmp_path, monkeypatch):
+def test_run_substitutes_plain_inputs_into_docstring_and_confirm_text(tmp_path):
     """<VERSION> is replaced in docstring and confirm text, and a secret's placeholder is left as written."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(
         tmp_path,
         INPUTS_FRONTMATTER
@@ -869,10 +853,8 @@ def test_dry_run_substitutes_plain_inputs_into_every_block(tmp_path, monkeypatch
     ]
 
 
-def test_dry_run_collects_plain_inputs_but_never_asks_for_secrets(tmp_path, monkeypatch):
+def test_dry_run_collects_plain_inputs_but_never_asks_for_secrets(tmp_path):
     """Plain inputs are still asked for, so the blocks can be shown filled in, but secrets aren't needed."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + "\n## Only\n\n```sh run\ntrue\n```\n")
     prompter = FakePrompter(answers=["1.2.0"])
 
@@ -1132,9 +1114,8 @@ def test_block_by_block_asks_once_the_block_code_has_been_sent(tmp_path):
     assert asked_after.block.line == 3
 
 
-def test_block_by_block_only_asks_about_run_blocks(tmp_path, monkeypatch):
+def test_block_by_block_only_asks_about_run_blocks(tmp_path):
     """docstring blocks are just sent, and confirm and input blocks still ask their own questions."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
     prompter = FakePrompter(answers=["42"])
 
@@ -1176,9 +1157,8 @@ def test_block_by_block_asks_before_step_by_step_when_both_are_set(tmp_path):
     assert result.status == "aborted"
 
 
-def test_confirm_input_and_run_block_events_carry_the_line_of_their_opening_fence(tmp_path, monkeypatch):
+def test_confirm_input_and_run_block_events_carry_the_line_of_their_opening_fence(tmp_path):
     """A front end finds the rendered block an event is about by its line, so it must be the fence's own line."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
     fences = [
         number for number, line in enumerate(PR_RUNBOOK.splitlines(), 1) if line.startswith("```") and line != "```"
@@ -1436,10 +1416,8 @@ def test_run_finishes_as_interrupted_before_starting_on_ctrl_c_at_the_start_prom
     assert not (tmp_path / "ran").exists()
 
 
-def test_run_lets_ctrl_c_while_collecting_inputs_end_the_run_unhandled(tmp_path, monkeypatch):
+def test_run_lets_ctrl_c_while_collecting_inputs_end_the_run_unhandled(tmp_path):
     """Ctrl-C while typing inputs happens before the overview, so there's no run to finish; it's left to the CLI."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("TOKEN", raising=False)
     path = write_runbook(tmp_path, INPUTS_FRONTMATTER + "\n## Only\n\n```sh run\ntrue\n```\n")
 
     class CtrlCAtInput(FakePrompter):
@@ -1482,9 +1460,8 @@ Merged PR <PR>.
 """
 
 
-def test_run_asks_for_an_input_block_when_it_reaches_it(tmp_path, monkeypatch):
+def test_run_asks_for_an_input_block_when_it_reaches_it(tmp_path):
     """An input block is asked for at its place in the run, after the blocks before it, not before the first step."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
     events: list[runner.Event] = []
     seen_when_asked: list[list[type]] = []
@@ -1503,9 +1480,8 @@ def test_run_asks_for_an_input_block_when_it_reaches_it(tmp_path, monkeypatch):
     assert output(events) == ["build", "PR 42 is 42"]
 
 
-def test_run_gives_an_input_blocks_value_to_every_later_block(tmp_path, monkeypatch):
+def test_run_gives_an_input_blocks_value_to_every_later_block(tmp_path):
     """Once asked, the value is substituted and in the environment for the rest of the run, in later steps too."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
 
     events, result = run(path, FakePrompter(answers=["42"]))
@@ -1515,9 +1491,8 @@ def test_run_gives_an_input_blocks_value_to_every_later_block(tmp_path, monkeypa
     assert [event.text for event in events if isinstance(event, runner.Docstring)] == ["Merged PR 42.\n"]
 
 
-def test_run_sends_each_collected_input(tmp_path, monkeypatch):
+def test_run_sends_each_collected_input(tmp_path):
     """An InputCollected event records the name and value at the block, so a transcript can show it."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
 
     events, _ = run(path, FakePrompter(answers=["42"]))
@@ -1537,9 +1512,8 @@ def test_run_takes_an_input_blocks_value_from_the_environment(tmp_path, monkeypa
     assert output(events)[-1] == "PR 7 is 7"
 
 
-def test_run_asks_again_when_an_input_blocks_answer_does_not_match(tmp_path, monkeypatch):
+def test_run_asks_again_when_an_input_blocks_answer_does_not_match(tmp_path):
     """A typed answer that doesn't match the block's pattern is refused and asked for again."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
     prompter = FakePrompter(answers=["latest", "42"])
 
@@ -1549,9 +1523,8 @@ def test_run_asks_again_when_an_input_blocks_answer_does_not_match(tmp_path, mon
     assert output(events)[-1] == "PR 42 is 42"
 
 
-def test_run_masks_a_secret_input_block_from_then_on(tmp_path, monkeypatch):
+def test_run_masks_a_secret_input_block_from_then_on(tmp_path):
     """A secret typed at an input block is in the environment, but shown as **** in everything sent after it."""
-    monkeypatch.delenv("OTP", raising=False)
     path = write_runbook(
         tmp_path,
         """\
@@ -1577,9 +1550,8 @@ def test_run_masks_a_secret_input_block_from_then_on(tmp_path, monkeypatch):
     assert "123456" not in repr(events)
 
 
-def test_dry_run_does_not_ask_for_input_blocks(tmp_path, monkeypatch):
+def test_dry_run_does_not_ask_for_input_blocks(tmp_path):
     """Under dry the value may not exist yet, so it isn't asked for, and later blocks show <NAME> as written."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
     prompter = FakePrompter()
 
@@ -1601,9 +1573,8 @@ def test_dry_run_sends_input_blocks_so_they_can_be_shown(tmp_path):
     assert shown.input == Input(name="PR", description="The pull request number", pattern=r"\d+")
 
 
-def test_step_by_step_does_not_ask_about_input_blocks(tmp_path, monkeypatch):
+def test_step_by_step_does_not_ask_about_input_blocks(tmp_path):
     """--step only asks about run blocks; an input block is always asked for."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
     prompter = FakePrompter(answers=["42"])
 
@@ -1613,9 +1584,8 @@ def test_step_by_step_does_not_ask_about_input_blocks(tmp_path, monkeypatch):
     assert prompter.questions.count(runner.STEP_QUESTION) == 2
 
 
-def test_run_finishes_as_interrupted_on_ctrl_c_at_an_input_block(tmp_path, monkeypatch):
+def test_run_finishes_as_interrupted_on_ctrl_c_at_an_input_block(tmp_path):
     """Ctrl-C while typing at an input block ends the run at that step, with nothing collected."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
 
     class CtrlCAtInput(FakePrompter):
@@ -1693,10 +1663,8 @@ echo "third <VERSION> $PR"
 
 
 @pytest.fixture
-def resume_env(monkeypatch):
+def resume_env():
     """Neither input is set in the environment, so each comes from saved or is asked for."""
-    monkeypatch.delenv("VERSION", raising=False)
-    monkeypatch.delenv("PR", raising=False)
 
 
 def test_run_overview_is_not_resuming_by_default(tmp_path):
@@ -1843,9 +1811,8 @@ def test_run_takes_a_skipped_input_block_from_the_environment_first(tmp_path, re
     assert output(events) == ["third 3 8"]
 
 
-def test_run_asks_for_a_skipped_secret_input_block_again_before_the_overview(tmp_path, monkeypatch):
+def test_run_asks_for_a_skipped_secret_input_block_again_before_the_overview(tmp_path):
     """Secrets are never saved, so a secret input block before start is asked for again, and masked from then on."""
-    monkeypatch.delenv("OTP", raising=False)
     path = write_runbook(
         tmp_path,
         """\
@@ -1998,7 +1965,6 @@ echo "released"
 def human_env(monkeypatch):
     monkeypatch.setenv("VERSION", "1.2.0")
     monkeypatch.setenv("TOKEN", "TOKEN")  # its value is in the confirm's text, so it's masked there
-    monkeypatch.delenv("PR", raising=False)
 
 
 def test_run_stops_for_human_input_at_a_confirm(tmp_path, human_env):
@@ -2051,9 +2017,8 @@ def test_run_finished_has_no_block_or_message_unless_it_needs_human_input(status
     assert (finished.block, finished.message) == (None, None)
 
 
-def test_run_lets_needs_human_input_from_frontmatter_inputs_end_the_run_unhandled(tmp_path, monkeypatch):
+def test_run_lets_needs_human_input_from_frontmatter_inputs_end_the_run_unhandled(tmp_path):
     """Before the run starts there's no step to stop at, so the caller must check inputs up front."""
-    monkeypatch.delenv("VERSION", raising=False)
     path = write_runbook(tmp_path, HUMAN_RUNBOOK)
     events: list[runner.Event] = []
 
@@ -2150,9 +2115,8 @@ def test_run_overview_has_every_block_filled_in_with_plain_inputs(tmp_path, monk
     )
 
 
-def test_dry_run_overview_has_every_block_filled_in(tmp_path, monkeypatch):
+def test_dry_run_overview_has_every_block_filled_in(tmp_path):
     """Under dry, plain inputs are filled in the same, and input blocks, never collected, stay as written."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
 
     events, _ = run(path, dry=True)
@@ -2167,9 +2131,8 @@ def test_dry_run_overview_has_every_block_filled_in(tmp_path, monkeypatch):
     )
 
 
-def test_run_sends_every_later_block_filled_in_with_an_input_blocks_value(tmp_path, monkeypatch):
+def test_run_sends_every_later_block_filled_in_with_an_input_blocks_value(tmp_path):
     """Once an input block's plain value is given, InputCollected carries every later block filled in with it."""
-    monkeypatch.delenv("PR", raising=False)
     path = write_runbook(tmp_path, PR_RUNBOOK)
 
     events, _ = run(path, FakePrompter(answers=["42"]))
@@ -2178,10 +2141,9 @@ def test_run_sends_every_later_block_filled_in_with_an_input_blocks_value(tmp_pa
     assert collected.blocks == ((19, 'echo "PR 42 is $PR"\n'), (25, "Merged PR 42.\n"))
 
 
-def test_run_never_fills_later_blocks_with_a_secret_input_blocks_value(tmp_path, monkeypatch):
+def test_run_never_fills_later_blocks_with_a_secret_input_blocks_value(tmp_path):
     """A secret input block leaves later blocks as they were, so InputCollected carries none, and none of its
     value."""
-    monkeypatch.delenv("PIN", raising=False)
     path = write_runbook(
         tmp_path,
         textwrap.dedent(
