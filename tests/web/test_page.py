@@ -50,6 +50,26 @@ def test_every_page_has_the_wordmark_and_the_library_link_at_the_top(tmp_path):
         assert '<a class="rd-nav" href="/">← Library</a>' in header
 
 
+def test_every_page_ends_with_links_to_the_docs_and_the_website(tmp_path):
+    """They open in a new tab, so following one doesn't leave a run, and send no Referer, so the page's address
+    stays on this machine."""
+    pages = [
+        all_features(),
+        page.library([], tmp_path),
+        page.library([Book("a", tmp_path / "a.md", None, None)], tmp_path),
+    ]
+
+    for markup in pages:
+        body = markup.split("<body>", 1)[1]
+        assert body.endswith(
+            '<footer class="rd-page-footer">'
+            '<a href="https://docs.rundot.dev/" target="_blank" rel="noreferrer">docs.rundot.dev</a>'
+            '<span aria-hidden="true">/</span>'
+            '<a href="https://rundot.dev/" target="_blank" rel="noreferrer">rundot.dev</a>'
+            "</footer>\n</body>\n</html>\n"
+        )
+
+
 def test_every_page_loads_the_packaged_stylesheet_and_script(tmp_path):
     for markup in [all_features(), page.library([], tmp_path)]:
         assert '<link rel="stylesheet" href="/static/rundot.css">' in markup
@@ -523,10 +543,14 @@ def test_every_font_the_stylesheet_uses_ships_with_it():
 
 
 def test_no_url_in_the_stylesheet_script_or_templates_points_off_the_server():
+    """So the page works offline. The footer's links are the only exception: they load nothing until clicked."""
     files = [WEB / "static" / "rundot.css", WEB / "static" / "rundot.js", *(WEB / "templates").glob("*.html")]
+    links = ['<a href="https://docs.rundot.dev/"', '<a href="https://rundot.dev/"']
 
     for path in files:
         text = path.read_text()
+        for link in links:
+            text = text.replace(link, "<a")
         assert not re.findall(r"(?:[a-z][a-z0-9+.-]*:)?//[\w.-]+", text, flags=re.I), path.name
         for url in re.findall(r"(?:url\(|src=|href=|import\()\s*['\"]?([^'\")\s>]+)", text):
             assert url.startswith(("/", "./", "fonts/", "#", "${")) and not url.startswith("//"), (path.name, url)

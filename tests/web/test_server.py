@@ -422,6 +422,7 @@ def test_a_book_page_has_its_title_description_library_link_and_sanitised_body(s
     assert '<h1 class="rd-title">Say &lt;b&gt;hello&lt;/b&gt;</h1>' in page
     assert "Who to say hello to" in page
     assert '<a class="rd-nav" href="/">← Library</a>' in page
+    assert '<footer class="rd-page-footer">' in page
     assert 'class="rd-block" data-kind="run"' in page
     assert "alert(1)" not in page
     assert "title:" not in page
