@@ -1,11 +1,48 @@
 [project]
 name = "rundot"
 version = "0.8.0"
-description = "Run hand-written markdown runbooks"
+description = "Executable markdown runbooks: check, dry-run and run the code blocks in a markdown file, one step at a time."
 readme = "README.md"
 authors = [{ name = "Paul Hallett", email = "paulandrewhallett@gmail.com" }]
 license = "MIT"
 requires-python = ">=3.12"
+keywords = [
+    "runbook",
+    "runbooks",
+    "executable-markdown",
+    "markdown",
+    "literate-devops",
+    "checklist",
+    "release",
+    "deploy",
+    "devops",
+    "sre",
+    "incident-response",
+    "automation",
+    "cli",
+    "shell",
+    "llm",
+    "ai-agents",
+    "claude-code",
+]
+# Python versions are the released ones CI tests. CI also runs 3.15-dev, which isn't listed until it's released.
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Documentation",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
 dependencies = [
     "click>=8.5.0",
     "markdown-it-py>=4.2.0",
@@ -14,9 +51,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/phalt/rundot"
+Homepage = "https://rundot.dev/"
 Documentation = "https://docs.rundot.dev/"
+Source = "https://github.com/phalt/rundot"
 Issues = "https://github.com/phalt/rundot/issues"
+Changelog = "https://docs.rundot.dev/CHANGELOG/"
 
 [project.scripts]
 rundot = "rundot.cli:cli"

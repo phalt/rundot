@@ -1,4 +1,5 @@
 site_name: rundot
+site_description: Executable markdown runbooks. Check, dry-run and run the code blocks in a markdown file, one step at a time.
 site_url: https://docs.rundot.dev/
 theme:
   name: material
